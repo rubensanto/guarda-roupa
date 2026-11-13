@@ -180,6 +180,8 @@ nav.tabs svg{width:24px;height:24px}
 .wx{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:var(--sunk);font-size:14px}
 .wx p{margin:0}
 .rank{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-ink);font-size:13px;font-weight:700;vertical-align:2px}
+.pick-fit .dress{border-radius:12px;margin:0 auto}
+.pick-fit{width:96px}
 .dress-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:#6A6A64}
 .dz-sticky{position:sticky;top:-10px;z-index:3;box-shadow:0 6px 12px -8px rgba(0,0,0,.25);padding:6px}
 .dz-sticky img,.dz-sticky img:only-child{width:auto;height:130px;aspect-ratio:1}
@@ -1344,7 +1346,8 @@ function builderHtml() {
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
     + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar o fit de hoje' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
     + (B.editDay ? '' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
-      : activeFits().length ? '<label class="field" for="bbase">Começar a partir de um fit que já tens<select id="bbase"><option value="">Não, começar do zero</option>' + activeFits().map((f) => '<option value="' + esc(f.id) + '">' + esc(f.title) + '</option>').join('') + '</select></label>' : '')
+      : activeFits().length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
+        + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(f.pieces, 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
     + layerToggles('b', 'b', B.sel, B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(B.sel, 170, B.closed, B.opened) + '</div>'
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
@@ -2110,7 +2113,7 @@ document.addEventListener('click', (ev) => {
     render(); if (db) db.doc((scope === 'fit' ? 'fits/' : 'days/') + id).update(patch).catch(() => {});
     return;
   }
-  if (t.dataset.fitBase) { baseBuilder(t.dataset.fitBase); return; }
+  if (t.dataset.fitBase || t.dataset.bbase) { baseBuilder(t.dataset.fitBase || t.dataset.bbase); return; }
   if (t.dataset.pset) { const p = pieceById(S.open); if (!p) return; const patch = { [t.dataset.pset]: t.dataset.pval || '' }; Object.assign(p, patch); genCache.clear(); render(); if (db) db.doc('pieces/' + p.id).update(patch).catch(() => {}); return; }
   if (t.hasAttribute('data-show-top')) { S.showTop = true; render(); return; }
   if (t.hasAttribute('data-wx-locate')) { pref('wxmanual', ''); if (wxLoc() && wxNow().src !== 'live') { WX.tried = 0; render(); wxFetch(); } else wxLocate(); return; }
@@ -2131,7 +2134,6 @@ document.addEventListener('click', (ev) => {
 document.addEventListener('change', (ev) => {
   const el = ev.target;
   if (el.id === 'sort') { S.sort = el.value; pref('sort', S.sort); render(); }
-  if (el.id === 'bbase' && el.value && S.builder) baseBuilder(el.value);
 });
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
 document.getElementById('file').addEventListener('change', (e) => handleFile(e.target.files && e.target.files[0]));
