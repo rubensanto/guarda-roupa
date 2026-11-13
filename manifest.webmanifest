@@ -1,0 +1,15 @@
+{
+  "name": "Guarda-Roupa",
+  "short_name": "Guarda-Roupa",
+  "description": "O meu armário: peças desenhadas, fits, histórico e estatísticas, guardados no próprio telemóvel.",
+  "lang": "pt-PT",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F4F2",
+  "theme_color": "#1F5C4A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
