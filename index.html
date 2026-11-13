@@ -455,6 +455,11 @@ const Cloud = (() => {
     if (j.access_token) { await adopt(fromToken(j)); return { confirm: false }; }
     return { confirm: true };
   }
+  async function changePassword(password) {
+    const r = await fetch(BASE + '/auth/v1/user', { method: 'PUT', headers: { apikey: KEY, Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(j.msg || j.message || ('HTTP ' + r.status)), { code: j.error_code, status: r.status });
+  }
   async function signOut() { const t = session && session.access_token; save(null); emit(); try { if (t) await authPost('logout', {}, t); } catch (e) {} }
 
   async function token() {
@@ -569,7 +574,7 @@ const Cloud = (() => {
   }
 
   return {
-    start, sync, signIn, signUp, signOut, status,
+    start, sync, signIn, signUp, signOut, changePassword, status,
     user: () => session && session.user,
     on: (fn) => { subs.add(fn); return () => subs.delete(fn); }
   };
@@ -602,10 +607,8 @@ const Login = (() => {
       + '<label>Palavra-passe<input id="lg-pass" type="password" autocomplete="' + (st.mode === 'in' ? 'current-password' : 'new-password') + '" minlength="6" required></label>'
       + '<button class="btn primary" type="submit"' + (st.busy ? ' disabled' : '') + '>' + (st.busy ? 'Um momento…' : (st.mode === 'in' ? 'Entrar' : 'Criar conta')) + '</button>'
       + (st.msg ? '<p class="status' + (st.err ? ' err' : '') + '" role="status">' + st.msg + '</p>' : '')
-      + '<button class="btn" type="button" data-lg-switch>' + (st.mode === 'in' ? 'Ainda não tenho conta' : 'Já tenho conta') + '</button>'
       + '</form>';
     el.querySelector('#lg-email').value = email; el.querySelector('#lg-pass').value = pass;
-    el.querySelector('[data-lg-switch]').onclick = () => { st.mode = st.mode === 'in' ? 'up' : 'in'; st.msg = ''; render(); };
     el.querySelector('form').onsubmit = async (ev) => {
       ev.preventDefault();
       const e = el.querySelector('#lg-email').value.trim(), p = el.querySelector('#lg-pass').value;
@@ -1656,7 +1659,12 @@ function cloudHtml() {
     : '';
   return '<div class="card" style="gap:8px"><h3 style="margin:0">Conta</h3><p class="status">' + esc(u.email) + '</p>'
     + '<p class="status' + (st.state === 'error' ? ' err' : '') + '" role="status">' + esc(line) + '</p>'
-    + '<div class="row"><button class="btn" data-dp-sync' + (st.state === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn" data-dp-signout>Terminar sessão</button></div></div>'
+    + '<div class="row"><button class="btn" data-dp-sync' + (st.state === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn" data-dp-signout>Terminar sessão</button></div>'
+    + (S.dataSheet && S.dataSheet.pw
+      ? '<label style="display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600">Nova palavra-passe<input id="dp-pw" type="password" autocomplete="new-password" minlength="6" style="min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:0 12px;font:inherit;font-size:16px;font-weight:400"></label>'
+        + '<div class="row"><button class="btn primary" data-dp-pwsave' + (S.dataSheet.pwBusy ? ' disabled' : '') + '>' + (S.dataSheet.pwBusy ? 'A guardar…' : 'Guardar') + '</button><button class="btn" data-dp-pwcancel>Cancelar</button></div>'
+      : '<button class="btn" data-dp-pw>Mudar palavra-passe</button>')
+    + '</div>'
     + '<p class="status" style="font-size:13px">As peças, fits e fotos ficam na tua conta (só tu lhes acedes) e numa cópia neste aparelho, por isso a app também funciona sem internet.</p>';
 }
 Cloud.on(() => { if (S.dataSheet) renderSheet(true); });
@@ -1718,6 +1726,17 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-dp-import')) { const f = document.getElementById('ifile'); f.value = ''; f.click(); return; }
   if (t.dataset.dpMode) { doImport(t.dataset.dpMode); return; }
   if (t.hasAttribute('data-dp-cancelimport')) { S.dataSheet.pending = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-dp-pw')) { S.dataSheet.pw = true; S.dataSheet.msg = ''; renderSheet(true); setTimeout(() => { const i = document.getElementById('dp-pw'); if (i) i.focus(); }, 50); return; }
+  if (t.hasAttribute('data-dp-pwcancel')) { S.dataSheet.pw = false; renderSheet(true); return; }
+  if (t.hasAttribute('data-dp-pwsave')) {
+    const D = S.dataSheet, v = (document.getElementById('dp-pw') || {}).value || '';
+    if (v.length < 6) { D.msg = 'A palavra-passe tem de ter pelo menos 6 caracteres.'; D.err = true; renderSheet(true); return; }
+    D.pwBusy = true; renderSheet(true);
+    Cloud.changePassword(v).then(() => { D.pw = false; D.msg = 'Palavra-passe mudada. Usa a nova para entrar nos outros aparelhos.'; D.err = false; })
+      .catch((e) => { D.msg = /same_password|different/i.test((e.code || '') + e.message) ? 'Escolhe uma palavra-passe diferente da atual.' : 'Não foi possível mudar: ' + e.message; D.err = true; })
+      .finally(() => { D.pwBusy = false; if (S.dataSheet) renderSheet(true); });
+    return;
+  }
   if (t.hasAttribute('data-dp-sync')) { Cloud.sync(); return; }
   if (t.hasAttribute('data-dp-signout')) { S.dataSheet = null; renderSheet(true); Cloud.signOut(); return; }
   if (t.hasAttribute('data-dp-persist')) { LS.askPersist().then(async () => { if (S.dataSheet) { S.dataSheet.usage = await LS.usage(); renderSheet(true); } }); return; }
