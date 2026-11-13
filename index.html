@@ -719,8 +719,8 @@ function viewToday() {
       + '<div style="display:flex;justify-content:center">' + dressedHtml(plan.pieces, 220, plan.closed, plan.opened) + '</div>'
       + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
       + (f ? rateHtml(f) : '') + '</section>';
-    h += S.showTop ? topHtml() : '<button class="btn" data-show-top>Ver o top 3 de hoje na mesma</button>';
-  } else h += topHtml();
+  }
+  h += topHtml();
   h += '<section class="card" aria-labelledby="up-h"><h2 id="up-h">Foto ou vídeo do dia</h2>'
     + '<div class="seg" role="group" aria-label="Tipo de envio">'
     + '<button id="kind-vestido" data-kind="vestido" aria-pressed="' + (S.upKind === 'vestido') + '">Vestido (do dia)</button>'
@@ -1176,7 +1176,7 @@ function dayCard(d) {
 function viewFits() {
   const list = activeFits().filter((f) => S.fitFilter === 'all' || (S.fitFilter === 'gosto' ? f.status === 'gosto' : f.source === 'eu'));
   const past = worn().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
-  let h = '<div class="head"><p class="eyebrow">Propostas com o que tens no armário</p><h1>Fits</h1></div>' + buildBtn();
+  let h = '<div class="head"><p class="eyebrow">Propostas com o que tens no armário</p><h1>Fits</h1></div>' + topHtml();
   h += '<div class="chips" role="group" aria-label="Mostrar">'
     + [['all', 'Todos'], ['gosto', 'Guardados'], ['eu', 'Criados por mim']].map(([k, l]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (S.fitFilter === k) + '">' + l + '</button>').join('') + '</div>';
   h += '<section class="stack" aria-label="Propostas">';
@@ -2138,7 +2138,7 @@ async function boot() {
   try { const r = await LS.init(); db = r.db; assets = r.assets; }
   catch (e) { S.ready = true; S.offline = true; render(); return; }
   Cloud.on(Login.render); Cloud.start(); Login.render();
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done && !S.designer && !S.builder) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}); }
   document.getElementById('ifile').addEventListener('change', (e) => readImport(e.target.files && e.target.files[0]));
   let got = 0; const mark = () => { if (++got >= 4) S.ready = true; rerender(); };
   const sub = (q, key) => q.onSnapshot((s) => {
