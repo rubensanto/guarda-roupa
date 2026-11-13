@@ -203,6 +203,15 @@ nav.tabs svg{width:24px;height:24px}
 .seg-sm{align-self:flex-start}
 .seg-sm button{min-height:36px;padding:0 12px;font-size:13px;flex:none}
 .fitview{display:flex;gap:12px;align-items:flex-start}
+.sidx{display:flex;align-items:baseline;gap:6px;width:100%;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-size:14px;color:var(--muted)}
+.sidx span{margin-right:auto}.sidx b{font-size:20px;font-weight:600;color:var(--fg)}.sidx small{font-size:12px}.sidx svg{align-self:center;margin-left:4px}
+.sidx.ok b{color:var(--accent)}
+.sparts{display:flex;flex-direction:column;gap:10px;background:var(--sunk);border-radius:14px;padding:12px}
+.sparts .sp-top{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;font-weight:500}
+.sparts .sp-top small{font-weight:400;color:var(--muted);font-size:12px}
+.sparts .sp-bar{height:5px;border-radius:3px;background:var(--line);margin:4px 0;overflow:hidden}
+.sparts .sp-bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.sparts p{margin:0;font-size:13px;color:var(--muted)}
 .usels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
 .usel select{color:var(--fg);width:100%;min-width:0}
@@ -747,7 +756,7 @@ function viewToday() {
     const f = plan.fit && S.fits.find((x) => x.id === plan.fit);
     h += '<section class="card" aria-labelledby="fit-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="fit-h">' + esc(plan.title || 'Fit de hoje') + '</h2><button class="chip" data-edit-day="' + esc(plan.date) + '">Editar</button></div>'
       + layerToggles('day', plan.date, uids(plan), plan.closed, plan.opened)
-      + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), 220, plan.closed, plan.opened) + '</div>' + optSel('day', plan.date, plan)
+      + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), 220, plan.closed, plan.opened) + '</div>' + styleHtml('d:' + plan.date, styleOf(uids(plan), plan.closed, plan.opened)) + optSel('day', plan.date, plan)
       + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
       + (f ? rateHtml(f) : '') + '</section>';
   }
@@ -1014,44 +1023,72 @@ function wxHtml() {
 // ---------- daily top 3 ----------
 const fitKey = (ids) => ids.slice().sort().join('|');
 function propSkips() { try { const s = JSON.parse(pref('skip') || 'null'); return s && s.day === today() ? s.keys : []; } catch (e) { return []; } }
-function harmony(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { score, notes }
-  const notes = []; let score = 0;
+// Índice de estilo, 0–100: quão bem fica o conjunto, só pelo que se vê. Seis variáveis com pontos fixos
+// (cores 35 · nº de cores 15 · contraste 15 · calçado 10 · padrões 10 · coerência 15). O tempo e as minhas
+// estrelas ficam de fora: servem para ordenar as propostas, não para dizer se o fit é bonito.
+function styleParts(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { idx, parts: [{k, label, pts, max, why}], notes }
+  const notes = [], parts = [], add = (k, label, pts, max, why) => parts.push({ k, label, pts: Math.max(0, Math.min(max, Math.round(pts))), max, why });
   const items = F.vis.map((v) => ({ p: v.p, w: v.w, c: colorFam(v.p.color) }));
   const weight = new Map(); items.forEach((x) => weight.set(x.c.fam, (weight.get(x.c.fam) || 0) + x.w));
   const acc = new Map(); items.filter((x) => x.c.kind === 'accent').forEach((x) => { const a = acc.get(x.c.fam) || { h: x.c.h, w: 0 }; a.w = Math.max(a.w, x.w); acc.set(x.c.fam, a); });
   const names = [...acc.keys()];
-  if (acc.size === 0) { score += [...weight.keys()].length > 1 ? 0.6 : 0.3; notes.push('Tons neutros'); }
-  else if (acc.size === 1) { score += 1; notes.push('Uma cor de destaque (' + names[0] + ') sobre neutros'); }
+  // 1 · cores
+  let pts, why;
+  if (acc.size === 0) { const multi = weight.size > 1; pts = multi ? 26 : 22; why = multi ? 'Só tons neutros: seguro, sem cor de destaque' : 'Tudo no mesmo tom neutro'; notes.push('Tons neutros'); }
+  else if (acc.size === 1) { pts = 35; why = 'Uma cor de destaque (' + names[0] + ') sobre neutros'; notes.push(why); }
   else if (acc.size === 2) {
-    const [a, b] = [...acc.values()]; let d = Math.abs(a.h - b.h); d = Math.min(d, 360 - d);
-    if (d <= 45) { score += 0.7; notes.push('Cores vizinhas: ' + names.join(' e ')); }
-    else if (d >= 150) { const big = a.w >= 3 && b.w >= 3; score += big ? 0.1 : 0.5; notes.push('Cores opostas: ' + names.join(' e ')); }
-    else score -= 0.7;
-  } else score -= 1.6;
-  // regra das três cores, com uma dominante (60-30-10)
-  const fams = [...weight.entries()].sort((x, y) => y[1] - x[1]), total = fams.reduce((s, x) => s + x[1], 0);
-  if (fams.length <= 3) score += 0.3; else score -= 0.5 * (fams.length - 3);
-  if (fams.length > 1 && fams[0][1] / total >= 0.45) { score += 0.3; if (acc.size !== 1) notes.push('Base em ' + fams[0][0]); }
-  if (weight.has('preto') && weight.has('azul-marinho') && weight.get('preto') >= 3 && weight.get('azul-marinho') >= 3) score -= 0.3;
-  // contraste entre cima e baixo
+    const [x, y] = [...acc.values()]; let d = Math.abs(x.h - y.h); d = Math.min(d, 360 - d);
+    if (d <= 45) { pts = 30; why = 'Cores vizinhas: ' + names.join(' e '); notes.push(why); }
+    else if (d >= 150) { const big = x.w >= 3 && y.w >= 3; pts = big ? 14 : 24; why = 'Cores opostas: ' + names.join(' e ') + (big ? ', as duas em peças grandes' : ''); notes.push('Cores opostas: ' + names.join(' e ')); }
+    else { pts = 8; why = names.join(' e ') + ' não são vizinhas nem opostas: chocam'; }
+  } else { pts = 0; why = 'Três ou mais cores fortes: ' + names.join(', '); }
+  if (weight.has('preto') && weight.has('azul-marinho') && weight.get('preto') >= 3 && weight.get('azul-marinho') >= 3) { pts -= 4; why += ' · preto com azul-marinho em peças grandes'; }
+  add('cor', 'Cores', pts, 35, why);
+  // 2 · número de cores, com uma dominante (60-30-10)
+  const fams = [...weight.entries()].sort((x, y) => y[1] - x[1]), total = fams.reduce((t, x) => t + x[1], 0), dom = fams.length && fams[0][1] / total >= 0.45;
+  pts = (fams.length <= 3 ? 9 : 9 - 5 * (fams.length - 3)) + (dom ? 6 : 0);
+  add('num', 'Número de cores', pts, 15, fams.length + (fams.length === 1 ? ' família de cor' : ' famílias de cor') + (fams.length > 3 ? ' (mais de três)' : '') + (fams.length > 1 ? dom ? ', com ' + fams[0][0] + ' a dominar' : ', sem uma dominante' : ''));
+  if (fams.length > 1 && dom && acc.size !== 1) notes.push('Base em ' + fams[0][0]);
+  // 3 · contraste entre cima e baixo
   if (F.main && F.bottom) {
-    const a = colorFam(F.main.color), b = colorFam(F.bottom.color), d = Math.abs(a.l - b.l);
-    if (d < 0.07) score -= a.fam === b.fam ? 0.5 : 0.2; else if (d >= 0.2) score += 0.4;
-  }
-  // calçado: neutro ou a repetir uma cor do resto
-  if (F.shoe) { const c = colorFam(F.shoe.color); const echo = items.some((x) => x.p !== F.shoe && x.c.fam === c.fam); score += echo ? 0.3 : c.kind !== 'accent' ? 0.2 : -0.5; }
-  // padrões: um chega; dois só se forem de tipos diferentes
+    const x = colorFam(F.main.color), y = colorFam(F.bottom.color), d = Math.abs(x.l - y.l);
+    if (d >= 0.2) add('con', 'Contraste cima/baixo', 15, 15, 'Diferença clara de claro/escuro');
+    else if (d >= 0.07) add('con', 'Contraste cima/baixo', 8, 15, 'Diferença ligeira de claro/escuro');
+    else add('con', 'Contraste cima/baixo', x.fam === y.fam ? 0 : 4, 15, x.fam === y.fam ? 'Cima e baixo no mesmo tom e na mesma cor' : 'Cima e baixo com a mesma claridade');
+  } else add('con', 'Contraste cima/baixo', 8, 15, 'Sem parte de cima ou de baixo para comparar');
+  // 4 · calçado: a repetir uma cor do resto, ou neutro
+  if (F.shoe) { const c = colorFam(F.shoe.color), echo = items.some((x) => x.p !== F.shoe && x.c.fam === c.fam);
+    add('sap', 'Calçado', echo ? 10 : c.kind !== 'accent' ? 8 : 0, 10, echo ? 'Repete uma cor do resto (' + c.fam + ')' : c.kind !== 'accent' ? 'Neutro (' + c.fam + '): vai com tudo' : 'Cor forte (' + c.fam + ') que não aparece em mais lado nenhum');
+  } else add('sap', 'Calçado', 5, 10, 'Sem calçado');
+  // 5 · padrões: um chega; dois só se forem de tipos diferentes
   const pats = items.map((x) => ({ p: x.p, t: patType(x.p) })).filter((x) => x.t);
-  if (pats.length === 1) {
-    score += 0.25; notes.push('Um padrão, o resto liso');
-    const c2 = pats[0].p.design && pats[0].p.design.color2;
-    if (c2 && items.some((x) => x.p !== pats[0].p && x.c.fam === colorFam(c2).fam)) score += 0.2;
-  } else if (pats.length === 2) score -= pats[0].t === pats[1].t ? 0.9 : 0.3;
-  else if (pats.length > 2) score -= 1.8;
-  // estilo
-  const fs = items.map((x) => formality(x.p));
-  if (Math.min(...fs) < 0 && Math.max(...fs) > 0) score -= 0.8;
-  return { score, notes };
+  if (!pats.length) add('pad', 'Padrões', 8, 10, 'Tudo liso');
+  else if (pats.length === 1) { add('pad', 'Padrões', 10, 10, 'Um padrão (' + pats[0].t + '), o resto liso'); notes.push('Um padrão, o resto liso'); }
+  else if (pats.length === 2) add('pad', 'Padrões', pats[0].t === pats[1].t ? 0 : 4, 10, pats[0].t === pats[1].t ? 'Dois padrões do mesmo tipo (' + pats[0].t + ')' : 'Dois padrões diferentes (' + pats[0].t + ' e ' + pats[1].t + ')');
+  else add('pad', 'Padrões', 0, 10, pats.length + ' padrões ao mesmo tempo');
+  // 6 · coerência de estilo
+  const fs = items.map((x) => ({ p: x.p, f: formality(x.p) })), sport = fs.find((x) => x.f < 0), smart = fs.find((x) => x.f > 0);
+  add('est', 'Coerência de estilo', sport && smart ? 0 : 15, 15, sport && smart ? 'Mistura desportivo («' + sport.p.name + '») com arranjado («' + smart.p.name + '»)' : sport ? 'Tudo descontraído/desportivo' : smart ? 'Tudo casual ou arranjado' : 'Tudo casual');
+  return { idx: parts.reduce((t, x) => t + x.pts, 0), parts, notes };
+}
+// what the proposals rank by: the same index, on the scale the weather and history scores use
+function harmony(F) { const st = styleParts(F); return { score: (st.idx - 55) / 16, notes: st.notes, idx: st.idx, parts: st.parts }; }
+// the index of any set of pieces as it is worn (what is open / closed decides what is seen)
+function styleOf(ids, closed, opened) {
+  const ps = (ids || []).map(pieceById).filter(Boolean), bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
+  const tv = visibleTorso(ids, closed, opened); if (!tv.length && !bottom) return null;
+  const vis = tv.map((v, i) => ({ p: v.p, w: i === 0 ? 3 : v.win ? 0.5 : 2 }));
+  const main = tv.length ? (subOf(tv[0].p) === 'outer' && tv.length > 1 ? tv[1].p : tv[0].p) : null;
+  if (bottom) vis.push({ p: bottom, w: subOf(bottom) === 'shorts' ? 2 : 3 }); if (shoe) vis.push({ p: shoe, w: 1 });
+  return styleParts({ vis, main, bottom, shoe });
+}
+function styleHtml(key, st) { // the index as a button; tapping it shows where the points come from
+  if (!st) return '';
+  const open = S.styleOpen === key, tone = st.idx >= 80 ? ' ok' : '';
+  let h = '<button class="sidx' + tone + '" data-style="' + esc(key) + '" aria-expanded="' + open + '"><span>Índice de estilo</span><b>' + st.idx + '</b><small>/100</small><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate(' + (open ? 180 : 0) + 'deg)"><path d="M6 9l6 6 6-6"/></svg></button>';
+  if (open) h += '<div class="sparts">' + st.parts.map((x) => '<div><div class="sp-top"><span>' + x.label + '</span><b>' + x.pts + '<small>/' + x.max + '</small></b></div><div class="sp-bar"><i style="width:' + (x.pts / x.max * 100) + '%"></i></div><p>' + esc(x.why) + '</p></div>').join('')
+    + '<p class="status" style="font-size:12px">Só conta o que se vê. O tempo e as tuas estrelas não entram nesta nota.</p></div>';
+  return h;
 }
 let propCache = { key: '', res: null };
 // the pieces I asked proposals for («fits com estas peças»): the app fills in the rest
@@ -1146,7 +1183,7 @@ function proposals() {
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
       if (c.known && typeof c.known.rating === 'number') notes.push('Já lhe deste ' + num(c.known.rating) + ' ★');
-      x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null;
+      x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null; x.style = c.hm;
     });
   }
   propCache = { key, res }; return res;
@@ -1155,6 +1192,7 @@ function propCard(x, i) {
   const ps = x.ids.map(pieceById).filter(Boolean);
   return '<article class="card" aria-label="' + esc(x.label) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + esc(x.known.title || 'Já nos teus fits') + '</span>' : '') + '</div>'
     + '<div class="fitview">' + dressedHtml(x.ids, 150, false, []) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
+    + styleHtml('p:' + x.key, x.style)
     + '<div class="tags">' + x.notes.map((n) => '<span>' + esc(n) + '</span>').join('') + '</div>'
     + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-prop-skip="' + i + '" aria-label="Outra proposta em vez desta" title="Outra proposta" style="flex:none;width:50px;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>'
     + '<button class="btn" data-prop-edit="' + i + '" style="flex:none;padding:0 14px">Ajustar</button>'
@@ -1207,7 +1245,7 @@ function fitCard(f, compact) {
   h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 190, f.closed, f.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
   if (!compact) {
-    h += optSel('fit', f.id, f);
+    h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened)) + optSel('fit', f.id, f);
     const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
     if (tags.length) h += '<div class="tags">' + tags.map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>';
     if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(f.reason) + '</p>';
@@ -1406,7 +1444,7 @@ function builderHtml() {
         + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(uids(f), 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
-    + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
+    + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
   h += groups.map((g) => '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + g.s.label + '</h3><span class="eyebrow" style="font-size:12px">' + hint[g.s.group] + '</span></div><div class="pickrow">'
     + g.ps.map((p) => { const on = B.sel.includes(p.id); return '<button class="pick" data-bpick="' + esc(p.id) + '" aria-pressed="' + on + '"><span class="pic"><img src="' + pieceSrc(p) + '" alt=""></span><span>' + esc(p.name) + '</span></button>'; }).join('')
@@ -2139,6 +2177,7 @@ document.addEventListener('click', (ev) => {
   if (S.designer || S.dataSheet) return;
   const t = ev.target.closest('button'); if (!t) return;
   if (t.hasAttribute('data-data-open')) { openDataSheet(); return; }
+  if (t.dataset.style) { S.styleOpen = S.styleOpen === t.dataset.style ? null : t.dataset.style; if (t.dataset.style === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); } else render(); return; }
   if (t.dataset.with) {
     if (t.dataset.withGo) S.withPieces = [t.dataset.with]; else toggleWith(t.dataset.with);
     S.pickPiece = !S.withPieces.length;
