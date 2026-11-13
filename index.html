@@ -821,8 +821,12 @@ function layerToggles(scope, id, ids, closed, opened) {
 }
 const cleanOpened = (ids, opened) => { const st = torsoStack(ids); return (opened || []).filter((s) => st.some((p) => subOf(p) === s && canToggle(p, st))); };
 const CLIP_GAP = 'polygon(0 0,100% 0,100% 100%,58% 100%,54% 24%,46% 24%,42% 100%,0 100%)';
-const CLIP_V = 'polygon(0 0,43% 0,50% 40%,57% 0,100% 0,100% 100%,0 100%)';
-const WIN = { half: 'polygon(42% 0,58% 0,50.5% 41%,49.5% 41%)', band: 'inset(0 30% 0 30%)' };
+// half-zip opening: a narrow V from the collar down to where the zip ends
+const V_PTS = '45% 0,55% 0,50% 36%';
+const CLIP_V = 'polygon(0 0,45% 0,50% 36%,55% 0,100% 0,100% 100%,0 100%)';
+const WIN = { half: 'polygon(' + V_PTS + ')', band: 'inset(0 30% 0 30%)' };
+// limits a layer to the silhouette of another piece, so nothing ever pokes out above the collar
+const maskOf = (src) => { const u = "url('" + String(src).replace(/'/g, '%27') + "') 0 0/100% 100% no-repeat"; return ';-webkit-mask:' + u + ';mask:' + u; };
 function dressedHtml(ids, w, closed, opened) {
   const ps = (ids || []).map(pieceById).filter(Boolean);
   const bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
@@ -831,6 +835,10 @@ function dressedHtml(ids, w, closed, opened) {
   const img = (p, cls, st) => '<img class="' + cls + '" src="' + pieceSrc(p) + '" alt="" style="' + st + '">';
   if (bottom) L.push(img(bottom, 'dl', 'left:9%;top:43%;width:82%;z-index:1'));
   const vis = visibleTorso(ids, closed, opened);
+  const half = vis.find((v) => v.open && openKind(v.p) === 'half');
+  const halfSrc = half ? pieceSrc(half.p) : '';
+  if (half) // inside of the open collar, only where the piece itself is: seen above whatever is worn under it
+    L.push('<span class="dw" style="left:2%;top:1%;width:96%;aspect-ratio:1;z-index:1;clip-path:' + WIN.half + ';background:' + shade(half.p.color || '#888888', 0.5) + maskOf(halfSrc) + '"></span>');
   vis.forEach((v, i) => {
     const p = v.p, k = openKind(p), z = 5 - i;
     const box = subOf(p) === 'outer' ? 'left:0;top:0;width:100%' : 'left:2%;top:1%;width:96%';
@@ -840,9 +848,8 @@ function dressedHtml(ids, w, closed, opened) {
       else if (p.openIcon || !p.icon) src = pieceSrc(p, true);
       else clip = CLIP_GAP;
     }
-    // open half-zip with nothing under it: show the inside of the collar instead of a hole
-    if (v.open && k === 'half' && i === vis.length - 1) L.push('<span class="dw" style="' + box + ';z-index:' + z + ';aspect-ratio:1;clip-path:' + WIN.half + ';background:' + shade(p.color || '#888888', 0.55) + '"></span>');
-    L.push('<span class="dw" style="' + box + ';z-index:' + z + (v.win ? ';clip-path:' + WIN[v.win] : '') + '"><img src="' + src + '" alt=""' + (clip ? ' style="clip-path:' + clip + '"' : '') + '></span>');
+    const lim = v.win === 'half' && half && half.p !== p ? maskOf(halfSrc) : '';
+    L.push('<span class="dw" style="' + box + ';z-index:' + z + (v.win ? ';clip-path:' + WIN[v.win] : '') + lim + '"><img src="' + src + '" alt=""' + (clip ? ' style="clip-path:' + clip + '"' : '') + '></span>');
   });
   if (shoe) {
     if (shoe.pair) L.push(img(shoe, 'dl', 'left:28%;top:73%;width:44%;z-index:6'));
