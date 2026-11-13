@@ -16,6 +16,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
 <style>
+#login{position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 48px) 20px 40px}
+#login .lg{width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px}
+#login h1{margin:0}
+#login label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
+#login input{min-height:50px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:0 14px;font:inherit;font-size:16px;font-weight:400}
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:0}
 body{margin:0;font-size:14px}
 img{max-width:100%}
@@ -228,7 +233,8 @@ nav.tabs svg{width:24px;height:24px}
 //   db.doc('col/id').set(data) / .update(patch) / .delete()
 //   assets.upload(blob, {type}) -> {id, url}
 const LS = (() => {
-  const DB_NAME = 'guarda-roupa', DB_VER = 1;
+  const DB_NAME = 'guarda-roupa', DB_VER = 2;
+  let onLocal = null;              // set by the cloud sync: called after every local change
   const cols = new Map();          // name -> Map(id -> data)
   const listeners = new Set();     // {col, run}
   const urls = new Map();          // asset id -> object URL
@@ -240,6 +246,7 @@ const LS = (() => {
       const d = r.result;
       if (!d.objectStoreNames.contains('docs')) d.createObjectStore('docs', { keyPath: 'k' });
       if (!d.objectStoreNames.contains('blobs')) d.createObjectStore('blobs', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'k' });
     };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
@@ -255,9 +262,18 @@ const LS = (() => {
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   function notify(name) { listeners.forEach((l) => { if (l.col === name) l.run(); }); }
-  async function persist(name, id) {
+  // outbox: local changes waiting to be sent to the cloud (one entry per doc / asset, newest wins)
+  let seq = Date.now();
+  async function queue(entries) {
+    if (!entries.length) return;
+    await tx('outbox', 'readwrite', (s) => { entries.forEach((e) => s.put(Object.assign({ seq: ++seq }, e))); });
+    if (onLocal) onLocal();
+  }
+  const docEntry = (name, id) => { const v = col(name).get(id); return { k: 'doc:' + name + '/' + id, kind: 'doc', col: name, id, data: v ? clone(v) : null, deleted: !v }; };
+  async function persist(name, id, remote) {
     const v = col(name).get(id);
     await tx('docs', 'readwrite', (s) => v ? s.put({ k: name + '/' + id, col: name, id, data: v }) : s.delete(name + '/' + id));
+    if (!remote) await queue([docEntry(name, id)]);
   }
   function query(name, spec) {
     let rows = Array.from(col(name).entries()).map(([id, d]) => ({ id, d }));
@@ -291,9 +307,11 @@ const LS = (() => {
       const id = hexId(); const type = (opts && opts.type) || blob.type || 'application/octet-stream';
       const b = blob.type === type ? blob : new Blob([blob], { type });
       await tx('blobs', 'readwrite', (s) => s.put({ id, type, blob: b, size: b.size, at: new Date().toISOString() }));
-      const url = URL.createObjectURL(b); urls.set(id, url); return { id, url, sizeBytes: b.size, contentType: type };
+      const url = URL.createObjectURL(b); urls.set(id, url);
+      await queue([{ k: 'asset:' + id, kind: 'asset', id, op: 'up' }]);
+      return { id, url, sizeBytes: b.size, contentType: type };
     },
-    async remove(id) { await tx('blobs', 'readwrite', (s) => s.delete(id)); const u = urls.get(id); if (u) URL.revokeObjectURL(u); urls.delete(id); },
+    async remove(id) { await tx('blobs', 'readwrite', (s) => s.delete(id)); await queue([{ k: 'asset:' + id, kind: 'asset', id, op: 'rm' }]); const u = urls.get(id); if (u) URL.revokeObjectURL(u); urls.delete(id); },
     url: (id) => urls.get(id) || ''
   };
 
@@ -328,9 +346,11 @@ const LS = (() => {
       await tx('blobs', 'readwrite', (s) => s.put({ id, type: f.type, blob, size: blob.size, at: json.exportedAt }));
       if (urls.has(id)) URL.revokeObjectURL(urls.get(id)); urls.set(id, URL.createObjectURL(blob));
     }
+    await queue(Object.keys(files).map((id) => ({ k: 'asset:' + id, kind: 'asset', id, op: 'up' })));
     for (const n of Object.keys(json.data)) {
       for (const row of json.data[n]) { const { id, ...d } = row; col(n).set(id, d); }
       await tx('docs', 'readwrite', (s) => { col(n).forEach((d, id) => s.put({ k: n + '/' + id, col: n, id, data: d })); });
+      await queue(json.data[n].map((row) => docEntry(n, row.id)));
     }
     cols.forEach((m, n) => notify(n));
   }
@@ -341,9 +361,244 @@ const LS = (() => {
     return { files: blobs.length, bytes: blobs.reduce((s, r) => s + (r.size || 0), 0), quota: est && est.quota, persisted };
   }
   async function askPersist() { try { return navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : false; } catch (e) { return false; } }
-  return { init, exportAll, importAll, usage, askPersist, url: (id) => urls.get(id) || '' };
+  // ----- hooks used by the cloud sync (cloud.js) -----
+  const sync = {
+    onLocal(fn) { onLocal = fn; },
+    outbox: () => tx('outbox', 'readonly', (s) => reqP(s.getAll())),
+    // remove an outbox entry only if nothing newer replaced it meanwhile
+    done: (entries) => tx('outbox', 'readwrite', (s) => Promise.all(entries.map((e) => reqP(s.get(e.k)).then((cur) => { if (cur && cur.seq === e.seq) s.delete(e.k); })))),
+    requeue: (entries) => queue(entries),
+    docEntry,
+    applyRemote: async (name, id, data) => {
+      const cur = col(name).get(id);
+      if (data == null) { if (!cur) return false; col(name).delete(id); }
+      else { if (cur && JSON.stringify(cur) === JSON.stringify(data)) return false; col(name).set(id, data); }
+      await persist(name, id, true); return true;
+    },
+    localKeys: () => { const out = []; cols.forEach((m, n) => m.forEach((d, id) => out.push({ col: n, id }))); return out; },
+    blobIds: async () => (await tx('blobs', 'readonly', (s) => reqP(s.getAllKeys()))),
+    getBlob: async (id) => { const r = await tx('blobs', 'readonly', (s) => reqP(s.get(id))); return r ? r.blob : null; },
+    putBlob: async (id, blob) => {
+      await tx('blobs', 'readwrite', (s) => s.put({ id, type: blob.type, blob, size: blob.size, at: new Date().toISOString() }));
+      if (urls.has(id)) URL.revokeObjectURL(urls.get(id)); urls.set(id, URL.createObjectURL(blob));
+    },
+    notifyAll: () => cols.forEach((m, n) => notify(n)),
+    wipe: async () => {
+      await tx('docs', 'readwrite', (s) => s.clear()); await tx('blobs', 'readwrite', (s) => s.clear()); await tx('outbox', 'readwrite', (s) => s.clear());
+      urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); cols.forEach((m) => m.clear()); cols.forEach((m, n) => notify(n));
+    }
+  };
+  return { sync, init, exportAll, importAll, usage, askPersist, url: (id) => urls.get(id) || '' };
 })();
 
+// ---------- cloud sync (Supabase) ----------
+// The app keeps working from the local copy (IndexedDB). This module:
+//   - signs in with email + password (Supabase Auth REST API, no SDK);
+//   - sends local changes (LS outbox) to the table public.docs and the private bucket "wardrobe";
+//   - pulls everything back, so any device with the same account sees the same closet.
+// Conflict rule: a change not yet sent wins; otherwise the cloud wins. Deletions are kept as tombstones (deleted=true).
+const Cloud = (() => {
+  const BASE = 'https://cvrmzrrowagkzijunvgm.supabase.co';
+  const KEY = 'sb_publishable_LFlo82RCKA4_8HjzMJm4eA_AkX9dSIB';
+  const BUCKET = 'wardrobe';
+  const SK = 'gr-session', UK = 'gr-last-user';
+  const subs = new Set();
+  let session = null, running = false, again = false, timer = null;
+  const status = { state: 'idle', at: null, msg: '', pending: 0 };
+
+  const ls = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+  try { session = JSON.parse(ls.get(SK) || 'null'); } catch (e) { session = null; }
+  const save = (s) => { session = s; ls.set(SK, s ? JSON.stringify(s) : null); };
+  const emit = () => subs.forEach((fn) => { try { fn(); } catch (e) {} });
+  const set = (state, msg) => { status.state = state; status.msg = msg || ''; if (state === 'ok') status.at = new Date().toISOString(); emit(); };
+
+  async function authPost(path, body, bearer) {
+    const h = { apikey: KEY, 'Content-Type': 'application/json' }; if (bearer) h.Authorization = 'Bearer ' + bearer;
+    const r = await fetch(BASE + '/auth/v1/' + path, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(j.msg || j.error_description || j.message || ('HTTP ' + r.status)), { code: j.error_code || j.error || j.code, status: r.status });
+    return j;
+  }
+  const fromToken = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600), user: { id: j.user.id, email: j.user.email } });
+
+  async function adopt(s) {
+    const last = ls.get(UK);
+    if (last && last !== s.user.id) await LS.sync.wipe();   // another account used this device: start clean
+    ls.set(UK, s.user.id); save(s); emit(); sync();
+  }
+  async function signIn(email, password) { const j = await authPost('token?grant_type=password', { email, password }); await adopt(fromToken(j)); }
+  async function signUp(email, password) {
+    const back = location.origin + location.pathname;
+    const j = await authPost('signup?redirect_to=' + encodeURIComponent(back), { email, password });
+    if (j.access_token) { await adopt(fromToken(j)); return { confirm: false }; }
+    return { confirm: true };
+  }
+  async function signOut() { const t = session && session.access_token; save(null); emit(); try { if (t) await authPost('logout', {}, t); } catch (e) {} }
+
+  async function token() {
+    if (!session) throw Object.assign(new Error('no_session'), { status: 401 });
+    if (session.expires_at - 90 > Date.now() / 1000) return session.access_token;
+    try { const j = await authPost('token?grant_type=refresh_token', { refresh_token: session.refresh_token }); save(fromToken(j)); }
+    catch (e) { if (e.status === 400 || e.status === 401) { save(null); emit(); } throw e; }
+    return session.access_token;
+  }
+  async function api(path, opts) {
+    opts = opts || {};
+    const h = Object.assign({ apikey: KEY, Authorization: 'Bearer ' + await token() }, opts.headers || {});
+    const r = await fetch(BASE + path, Object.assign({}, opts, { headers: h }));
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw Object.assign(new Error('HTTP ' + r.status + ' ' + t.slice(0, 160)), { status: r.status }); }
+    return r;
+  }
+  const objPath = (id) => encodeURIComponent(session.user.id) + '/' + encodeURIComponent(id);
+
+  async function pushOutbox() {
+    const box = await LS.sync.outbox();
+    const docs = box.filter((b) => b.kind === 'doc');
+    for (let i = 0; i < docs.length; i += 100) {
+      const chunk = docs.slice(i, i + 100);
+      await api('/rest/v1/docs?on_conflict=owner,col,id', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(chunk.map((b) => ({ owner: session.user.id, col: b.col, id: b.id, data: b.deleted ? null : b.data, deleted: !!b.deleted })))
+      });
+      await LS.sync.done(chunk);
+    }
+    const files = box.filter((b) => b.kind === 'asset');
+    for (const b of files) {
+      if (b.op === 'up') {
+        const blob = await LS.sync.getBlob(b.id);
+        if (blob) await api('/storage/v1/object/' + BUCKET + '/' + objPath(b.id), { method: 'POST', headers: { 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true', 'cache-control': '31536000' }, body: blob });
+      } else {
+        await api('/storage/v1/object/' + BUCKET, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [session.user.id + '/' + b.id] }) });
+      }
+      await LS.sync.done([b]);
+    }
+    return box.length;
+  }
+
+  async function pull() {
+    const rows = await (await api('/rest/v1/docs?select=col,id,data,deleted&limit=50000')).json();
+    const pending = new Set((await LS.sync.outbox()).map((b) => b.k));
+    const seen = new Set(); let changed = false;
+    for (const r of rows) {
+      seen.add(r.col + '/' + r.id);
+      if (pending.has('doc:' + r.col + '/' + r.id)) continue;
+      if (await LS.sync.applyRemote(r.col, r.id, r.deleted ? null : r.data)) changed = true;
+    }
+    // things that only exist here (made offline, or data from before the account existed) go up
+    const missing = LS.sync.localKeys().filter((k) => !seen.has(k.col + '/' + k.id) && !pending.has('doc:' + k.col + '/' + k.id));
+    if (missing.length) await LS.sync.requeue(missing.map((k) => LS.sync.docEntry(k.col, k.id)));
+
+    // files
+    const remote = new Set();
+    for (let off = 0; ; off += 1000) {
+      const list = await (await api('/storage/v1/object/list/' + BUCKET, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: session.user.id + '/', limit: 1000, offset: off, sortBy: { column: 'name', order: 'asc' } }) })).json();
+      list.forEach((o) => { if (o && o.name && o.id !== null) remote.add(o.name.split('/').pop()); });
+      if (list.length < 1000) break;
+    }
+    const local = new Set(await LS.sync.blobIds());
+    const pend = new Set((await LS.sync.outbox()).filter((b) => b.kind === 'asset').map((b) => b.id));
+    const up = [...local].filter((id) => !remote.has(id) && !pend.has(id));
+    if (up.length) await LS.sync.requeue(up.map((id) => ({ k: 'asset:' + id, kind: 'asset', id, op: 'up' })));
+    const down = [...remote].filter((id) => !local.has(id) && !pend.has(id));
+    let i = 0;
+    const worker = async () => { while (i < down.length) { const id = down[i++]; try { const r = await api('/storage/v1/object/authenticated/' + BUCKET + '/' + objPath(id)); await LS.sync.putBlob(id, await r.blob()); changed = true; } catch (e) { if (e.status === 401) throw e; } } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    if (changed) LS.sync.notifyAll();
+    return missing.length + up.length;
+  }
+
+  async function sync() {
+    if (!session) return;
+    if (!navigator.onLine) { status.pending = (await LS.sync.outbox()).length; set('offline'); return; }
+    if (running) { again = true; return; }
+    running = true; set('syncing');
+    try {
+      await pushOutbox();
+      const more = await pull();
+      if (more) await pushOutbox();
+      status.pending = (await LS.sync.outbox()).length;
+      set('ok');
+    } catch (e) {
+      status.pending = (await LS.sync.outbox().catch(() => [])).length;
+      if (!session) set('idle'); else set('error', e && e.message ? e.message : String(e));
+    } finally {
+      running = false;
+      if (again) { again = false; schedule(300); }
+    }
+  }
+  function schedule(ms) { clearTimeout(timer); timer = setTimeout(sync, ms == null ? 1500 : ms); }
+
+  function start() {
+    LS.sync.onLocal(() => schedule());
+    window.addEventListener('online', () => schedule(200));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') schedule(200); });
+    setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
+    // email confirmation link lands back here with tokens in the URL hash
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get('access_token') && h.get('refresh_token')) {
+      history.replaceState(null, '', location.pathname + location.search);
+      const exp = Number(h.get('expires_at')) || Math.floor(Date.now() / 1000) + Number(h.get('expires_in') || 3600);
+      fetch(BASE + '/auth/v1/user', { headers: { apikey: KEY, Authorization: 'Bearer ' + h.get('access_token') } }).then((r) => r.json()).then((u) => {
+        if (u && u.id) adopt({ access_token: h.get('access_token'), refresh_token: h.get('refresh_token'), expires_at: exp, user: { id: u.id, email: u.email } });
+      }).catch(() => {});
+    }
+    if (session) sync();
+    emit();
+  }
+
+  return {
+    start, sync, signIn, signUp, signOut, status,
+    user: () => session && session.user,
+    on: (fn) => { subs.add(fn); return () => subs.delete(fn); }
+  };
+})();
+
+// ---------- login screen ----------
+const Login = (() => {
+  const st = { mode: 'in', busy: false, msg: '', err: false };
+  const errText = (e) => {
+    const c = (e && (e.code || '')) + ' ' + (e && e.message || '');
+    if (/invalid_credentials|Invalid login/i.test(c)) return 'Email ou palavra-passe errados.';
+    if (/email_not_confirmed|not confirmed/i.test(c)) return 'Ainda não confirmaste o email. Abre o link que recebeste.';
+    if (/user_already_exists|already registered/i.test(c)) return 'Já existe uma conta com este email. Entra em vez de criar.';
+    if (/weak_password|at least/i.test(c)) return 'A palavra-passe tem de ter pelo menos 6 caracteres.';
+    if (/rate|too many/i.test(c)) return 'Muitas tentativas. Espera um pouco e tenta de novo.';
+    if (/Failed to fetch|NetworkError|Load failed/i.test(c)) return 'Sem ligação à internet.';
+    return 'Não foi possível: ' + (e && e.message || 'erro');
+  };
+  function render() {
+    let el = document.getElementById('login');
+    const show = !Cloud.user();
+    if (!show) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'login'; document.body.appendChild(el); }
+    const ef = el.querySelector('#lg-email'), pf = el.querySelector('#lg-pass');
+    const email = ef ? ef.value : '', pass = pf ? pf.value : '';
+    el.innerHTML = '<form class="lg" novalidate>'
+      + '<p class="eyebrow">Guarda-Roupa</p><h1>' + (st.mode === 'in' ? 'Entrar' : 'Criar conta') + '</h1>'
+      + '<p class="status">' + (st.mode === 'in' ? 'Entra para veres o teu armário em qualquer aparelho.' : 'Uma conta só tua. As peças e fotos ficam guardadas na nuvem e neste aparelho.') + '</p>'
+      + '<label>Email<input id="lg-email" type="email" autocomplete="username" inputmode="email" required></label>'
+      + '<label>Palavra-passe<input id="lg-pass" type="password" autocomplete="' + (st.mode === 'in' ? 'current-password' : 'new-password') + '" minlength="6" required></label>'
+      + '<button class="btn primary" type="submit"' + (st.busy ? ' disabled' : '') + '>' + (st.busy ? 'Um momento…' : (st.mode === 'in' ? 'Entrar' : 'Criar conta')) + '</button>'
+      + (st.msg ? '<p class="status' + (st.err ? ' err' : '') + '" role="status">' + st.msg + '</p>' : '')
+      + '<button class="btn" type="button" data-lg-switch>' + (st.mode === 'in' ? 'Ainda não tenho conta' : 'Já tenho conta') + '</button>'
+      + '</form>';
+    el.querySelector('#lg-email').value = email; el.querySelector('#lg-pass').value = pass;
+    el.querySelector('[data-lg-switch]').onclick = () => { st.mode = st.mode === 'in' ? 'up' : 'in'; st.msg = ''; render(); };
+    el.querySelector('form').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const e = el.querySelector('#lg-email').value.trim(), p = el.querySelector('#lg-pass').value;
+      if (!/^\S+@\S+\.\S+$/.test(e)) { st.msg = 'Escreve um email válido.'; st.err = true; render(); return; }
+      if (p.length < 6) { st.msg = 'A palavra-passe tem de ter pelo menos 6 caracteres.'; st.err = true; render(); return; }
+      st.busy = true; st.msg = ''; render();
+      try {
+        if (st.mode === 'in') await Cloud.signIn(e, p);
+        else { const r = await Cloud.signUp(e, p); if (r.confirm) { st.mode = 'in'; st.msg = 'Conta criada. Enviámos um email para ' + e.replace(/</g, '&lt;') + ': abre o link para confirmar e depois entra aqui.'; st.err = false; } }
+      } catch (x) { st.msg = errText(x); st.err = true; }
+      st.busy = false; render();
+    };
+  }
+  return { render };
+})();
 (() => {
 // ---------- categories ----------
 const SUBS = [
@@ -1367,15 +1622,30 @@ document.addEventListener('change', (ev) => {
   if (el.dataset && el.dataset.dzColorinput) { const n = document.getElementById('dz-name'); if (n) Z.name = n.value; renderSheet(true); }
 });
 
-// ---------- data panel: backup / import / storage ----------
+// ---------- data panel: account, sync, backup / import / storage ----------
+function cloudHtml() {
+  const u = Cloud.user(), st = Cloud.status;
+  if (!u) return '<p class="status">Não tens sessão iniciada: os dados estão só neste aparelho.</p>';
+  const when = st.at ? new Date(st.at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
+  const line = st.state === 'syncing' ? 'A sincronizar…'
+    : st.state === 'error' ? 'Não foi possível sincronizar. Tenta outra vez daqui a pouco.'
+    : st.state === 'offline' ? 'Sem internet. ' + (st.pending ? st.pending + ' alteraç' + (st.pending === 1 ? 'ão espera' : 'ões esperam') + ' pela ligação.' : 'Tudo o que fizeres fica guardado e sincroniza depois.')
+    : st.state === 'ok' ? 'Sincronizado' + (when ? ' às ' + when : '') + '.' + (st.pending ? ' Faltam ' + st.pending + ' envios.' : '')
+    : '';
+  return '<div class="card" style="gap:8px"><h3 style="margin:0">Conta</h3><p class="status">' + esc(u.email) + '</p>'
+    + '<p class="status' + (st.state === 'error' ? ' err' : '') + '" role="status">' + esc(line) + '</p>'
+    + '<div class="row"><button class="btn" data-dp-sync' + (st.state === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn" data-dp-signout>Terminar sessão</button></div></div>'
+    + '<p class="status" style="font-size:13px">As peças, fits e fotos ficam na tua conta (só tu lhes acedes) e numa cópia neste aparelho, por isso a app também funciona sem internet.</p>';
+}
+Cloud.on(() => { if (S.dataSheet) renderSheet(true); });
 function fmtBytes(n) { if (!n && n !== 0) return '–'; if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB'; return (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB'; }
 function lastBackup() { return pref('lastBackup') || ''; }
-function backupDue() { const l = lastBackup(); if (!l) return S.pieces.length > 0; return (Date.now() - new Date(l).getTime()) > 7 * 86400000; }
+function backupDue() { if (Cloud.user()) return false; const l = lastBackup(); if (!l) return S.pieces.length > 0; return (Date.now() - new Date(l).getTime()) > 7 * 86400000; }
 function dataSheetHtml() {
   const D = S.dataSheet, u = D.usage;
   let h = '<div class="sheet-wrap"><button class="scrim" data-dp-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="dp-h">'
     + '<div class="sheet-head"><h2 id="dp-h">Os teus dados</h2><button class="x" data-dp-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
-    + '<p class="status">Tudo fica guardado só neste aparelho, dentro do browser. Faz uma cópia de segurança de vez em quando e guarda-a no iCloud Drive ou noutro sítio.</p>'
+    + cloudHtml()
     + '<div class="kv"><div><small>Peças</small><strong>' + S.pieces.length + '</strong></div><div><small>Dias registados</small><strong>' + S.days.filter((d) => d.worn).length + '</strong></div>'
     + '<div><small>Fotos e desenhos</small><strong>' + (u ? u.files : '…') + '</strong><small>' + (u ? fmtBytes(u.bytes) : '') + '</small></div>'
     + '<div><small>Última cópia</small><strong style="font-size:15px">' + (lastBackup() ? esc(fmtShort(lastBackup().slice(0, 10))) : 'Nunca') + '</strong></div></div>'
@@ -1426,6 +1696,8 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-dp-import')) { const f = document.getElementById('ifile'); f.value = ''; f.click(); return; }
   if (t.dataset.dpMode) { doImport(t.dataset.dpMode); return; }
   if (t.hasAttribute('data-dp-cancelimport')) { S.dataSheet.pending = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-dp-sync')) { Cloud.sync(); return; }
+  if (t.hasAttribute('data-dp-signout')) { S.dataSheet = null; renderSheet(true); Cloud.signOut(); return; }
   if (t.hasAttribute('data-dp-persist')) { LS.askPersist().then(async () => { if (S.dataSheet) { S.dataSheet.usage = await LS.usage(); renderSheet(true); } }); return; }
 });
 
@@ -1479,6 +1751,7 @@ async function boot() {
   render();
   try { const r = await LS.init(); db = r.db; assets = r.assets; }
   catch (e) { S.ready = true; S.offline = true; render(); return; }
+  Cloud.on(Login.render); Cloud.start(); Login.render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
   document.getElementById('ifile').addEventListener('change', (e) => readImport(e.target.files && e.target.files[0]));
   let got = 0; const mark = () => { if (++got >= 4) S.ready = true; rerender(); };
