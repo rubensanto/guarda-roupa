@@ -1,7 +1,7 @@
 // Guarda-Roupa — service worker: lets the app open with no internet.
 // Strategy: app files are served from the cache and refreshed in the background
 // (stale-while-revalidate); Google Fonts are cached the first time they load.
-const CACHE = 'guarda-roupa-v11';
+const CACHE = 'guarda-roupa-v12';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

@@ -671,7 +671,7 @@ const SORTS = [
 ];
 
 const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
-  period: 90, fitFilter: 'all', withPiece: null, pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
+  period: 90, fitFilter: 'all', withPieces: [], pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
 let db = null, assets = null;
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('gr-' + k); localStorage.setItem('gr-' + k, v); } catch (e) { return null; } };
 { const t = pref('tab'); if (t) S.tab = t === 'semana' ? 'fits' : t; const s = pref('sort'); if (s) S.sort = s; const p = pref('period'); if (p !== null && p !== undefined && p !== '') S.period = Number(p); }
@@ -726,8 +726,10 @@ function render() {
   if (!S.ready) { main.innerHTML = '<div class="head"><p class="eyebrow">A abrir…</p><h1>Guarda-Roupa</h1></div><div class="empty">A carregar o teu armário.</div>'; return; }
   if (S.offline) { main.innerHTML = '<div class="head"><h1>Guarda-Roupa</h1></div><p class="status err">Este browser não deixou guardar dados. Se estiveres em navegação privada, abre a app numa janela normal.</p>'; return; }
   const scroll = main.scrollTop;
+  const wr = main.querySelector('.withrow'), wrLeft = wr ? wr.scrollLeft : 0; // keep the strip where it was while choosing pieces
   main.innerHTML = S.tab === 'armario' ? viewCloset() : S.tab === 'fits' ? viewFits() : S.tab === 'stats' ? viewStats() : viewToday();
   main.scrollTop = scroll;
+  const wr2 = main.querySelector('.withrow'); if (wr2 && wrLeft) wr2.scrollLeft = wrLeft;
   renderSheet();
 }
 
@@ -1052,15 +1054,23 @@ function harmony(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { score, n
   return { score, notes };
 }
 let propCache = { key: '', res: null };
-// the piece I asked proposals for («fits com esta peça»), if it can be part of a fit
-function focusPiece() { const p = S.withPiece && S.pieces.find((x) => x.id === S.withPiece); return p && !p.removed && groupOf(p) !== 'acc' ? p : null; }
+// the pieces I asked proposals for («fits com estas peças»): the app fills in the rest
+function focusPieces() { return (S.withPieces || []).map((id) => S.pieces.find((x) => x.id === id)).filter((p) => p && !p.removed && groupOf(p) !== 'acc'); }
+function toggleWith(id) { // same slots as a fit: one casaco, one of each top type, one bottom, one calçado
+  const p = S.pieces.find((x) => x.id === id); if (!p) return;
+  if (S.withPieces.includes(id)) { S.withPieces = S.withPieces.filter((x) => x !== id); return; }
+  const g = groupOf(p), sub = subOf(p);
+  S.withPieces = focusPieces().filter((q) => g === 'top' || sub === 'outer' ? subOf(q) !== sub : groupOf(q) !== g || subOf(q) === 'outer').map((q) => q.id).concat(id);
+}
+const focusLabel = (fs) => fs.length > 2 ? fs.length + ' peças escolhidas' : fs.map((p) => '«' + p.name + '»').join(' e ');
 function proposals() {
-  const wx = wxNow(), skips = propSkips(), focus = focusPiece(), fsub = focus ? subOf(focus) : '';
-  const key = [focus ? focus.id : '', today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  const wx = wxNow(), skips = propSkips(), focus = focusPieces(), fOf = (test) => focus.find(test) || null;
+  const fShoe = fOf((p) => subOf(p) === 'shoe'), fBottom = fOf((p) => groupOf(p) === 'bottom'), fOuter = fOf((p) => subOf(p) === 'outer'), fTops = focus.filter((p) => ['tee', 'shirt', 'sweater'].includes(subOf(p)));
+  const key = [focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
   const by = (sub) => S.pieces.filter((p) => subOf(p) === sub);
-  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = fsub === 'shoe' ? [focus] : by('shoe');
-  const bottoms = focus && groupOf(focus) === 'bottom' ? [focus] : S.pieces.filter((p) => groupOf(p) === 'bottom');
+  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = fShoe ? [fShoe] : by('shoe');
+  const bottoms = fBottom ? [fBottom] : S.pieces.filter((p) => groupOf(p) === 'bottom');
   const T = wx.feel, target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
   // top combinations, back → front
   let tops = [];
@@ -1068,8 +1078,8 @@ function proposals() {
   tees.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
   tees.forEach((a) => shirts.forEach((b) => { if (openKind(b) === 'full') tops.push([a, b]); }));
   shirts.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
-  if (focus && ['tee', 'shirt', 'sweater'].includes(fsub)) tops = tops.filter((tp) => tp.includes(focus));
-  const outs = fsub === 'outer' ? [focus] : T > 23 ? [null] : [null, ...outers];
+  if (fTops.length) tops = tops.filter((tp) => fTops.every((p) => tp.includes(p)));
+  const outs = fOuter ? [fOuter] : T > 23 ? [null] : [null, ...outers];
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1117,12 +1127,12 @@ function proposals() {
   }
   const res = { wx, list: [] };
   if (cands.length) {
-    const fo = focus ? 1 : 0; // the chosen piece is in every candidate, so it does not count as «repeated»
+    const fo = focus.length; // the chosen pieces are in every candidate, so they do not count as «repeated»
     const share = (a, b) => (a.ids.filter((id) => b.ids.includes(id)).length - fo) / Math.max(1, Math.min(a.ids.length, b.ids.length) - fo);
     const best = (score, ok) => { let m = null, ms = -1e9; for (const c of cands) { if (res.list.some((x) => x.c === c) || (ok && !ok(c))) continue; const s = score(c); if (s > ms) { ms = s; m = c; } } return m; };
     const wxBest = Math.max(...cands.map((c) => c.wxs));
     const add = (label, c) => { if (c) res.list.push({ label, c }); };
-    add(focus ? 'A melhor combinação' : 'Melhor para hoje', best((c) => c.base + c.idl * 0.01));
+    add(fo ? 'A melhor combinação' : 'Melhor para hoje', best((c) => c.base + c.idl * 0.01));
     const first = res.list[0].c;
     add('A dar uso ao que está parado', best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3 && c.hm.score >= Math.min(0.4, first.hm.score - 0.6) && share(c, first) <= 0.6)
       || best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3));
@@ -1131,7 +1141,7 @@ function proposals() {
       const c = x.c, notes = [];
       const lay = c.ps.filter((p) => WARM[subOf(p)]).length;
       notes.push(wx.rain && c.ps.some((p) => subOf(p) === 'outer') ? 'Casaco para a chuva' : lay >= 3 ? lay + ' camadas para ' + Math.round(T) + ' °C' : subOf(c.ps[c.ps.length - 2]) === 'shorts' ? 'Leve para ' + Math.round(T) + ' °C' : 'À medida de ' + Math.round(T) + ' °C');
-      if (focus && c.wxs < wxBest - 2.5 || focus && c.wxs < -3) notes[0] = 'Pouco à medida dos ' + Math.round(T) + ' °C de hoje';
+      if (fo && (c.wxs < wxBest - 2.5 || c.wxs < -3)) notes[0] = 'Pouco à medida dos ' + Math.round(T) + ' °C de hoje';
       notes.push(...c.hm.notes.slice(0, 2));
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
@@ -1153,14 +1163,14 @@ function propCard(x, i) {
 function topHtml() {
   wxAuto();
   const R = proposals();
-  const focus = focusPiece(), pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
-  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (focus ? 'Fits com «' + esc(focus.name) + '»' : 'Top 3 para hoje') + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
+  const focus = focusPieces(), fo = focus.length, pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
+  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Top 3 para hoje') + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
   if (pick.length) {
-    h += '<div class="chips"><button class="chip" data-with-pick aria-pressed="' + !!(focus || S.pickPiece) + '" aria-expanded="' + !!(focus || S.pickPiece) + '">Propor com uma peça</button>' + (focus ? '<button class="chip" data-with-clear>✕ Todas as peças</button>' : '') + '</div>';
-    if (focus || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe a peça que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + (!!focus && focus.id === p.id) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
-      + (focus ? '' : '<p class="status" style="font-size:13px">Toca numa peça para ver fits que a incluem.</p>');
+    h += '<div class="chips"><button class="chip" data-with-pick aria-pressed="' + !!(fo || S.pickPiece) + '" aria-expanded="' + !!(fo || S.pickPiece) + '">Propor com peças à escolha</button>' + (fo ? '<button class="chip" data-with-clear>✕ Todas as peças</button>' : '') + '</div>';
+    if (fo || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
+      + '<p class="status" style="font-size:13px">' + (fo ? 'Podes juntar mais peças (ex.: calças + calçado) ou tocar numa escolhida para a tirar. A app propõe o resto.' : 'Toca numa ou mais peças (ex.: calças + calçado) e a app propõe o resto.') + '</p>';
   }
-  h += R.list.length ? R.list.map(propCard).join('') : focus ? '<div class="empty">Não encontrei combinações com «' + esc(focus.name) + '»: falta uma parte de cima, umas calças ou calções, ou um calçado para a acompanhar (ou já saltaste todas hoje).</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
+  h += R.list.length ? R.list.map(propCard).join('') : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
   return h + buildBtn() + '</section>';
 }
 async function useProposal(x) {
@@ -2130,12 +2140,13 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   if (t.hasAttribute('data-data-open')) { openDataSheet(); return; }
   if (t.dataset.with) {
-    S.withPiece = t.dataset.with; S.pickPiece = false;
+    if (t.dataset.withGo) S.withPieces = [t.dataset.with]; else toggleWith(t.dataset.with);
+    S.pickPiece = !S.withPieces.length;
     if (t.dataset.withGo) { S.open = null; S.confirmDel = false; if (S.tab !== 'fits') { S.tab = 'fits'; pref('tab', S.tab); } render(); document.getElementById('main').scrollTop = 0; } else render();
     return;
   }
-  if (t.hasAttribute('data-with-clear')) { S.withPiece = null; S.pickPiece = false; render(); return; }
-  if (t.hasAttribute('data-with-pick')) { if (focusPiece()) { S.withPiece = null; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
+  if (t.hasAttribute('data-with-clear')) { S.withPieces = []; S.pickPiece = false; render(); return; }
+  if (t.hasAttribute('data-with-pick')) { if (focusPieces().length) { S.withPieces = []; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
   if (t.dataset.period !== undefined) { S.period = Number(t.dataset.period); pref('period', S.period); render(); return; }
