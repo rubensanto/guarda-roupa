@@ -174,6 +174,12 @@ nav.tabs svg{width:24px;height:24px}
 .pair b{margin-left:auto;font-weight:500;color:var(--muted);white-space:nowrap}
 .dress{position:relative;aspect-ratio:10/18;max-width:100%;flex:none;background:var(--tile);border-radius:18px;border:1px solid var(--line);overflow:hidden}
 .dress .dl{position:absolute;height:auto;max-width:none;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
+.dress .dw{position:absolute;pointer-events:none}
+.dress .dw img{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
+.ltog{display:flex;flex-wrap:wrap;gap:6px}
+.wx{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:var(--sunk);font-size:14px}
+.wx p{margin:0}
+.rank{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-ink);font-size:13px;font-weight:700;vertical-align:2px}
 .dress-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:#6A6A64}
 .dz-sticky{position:sticky;top:-10px;z-index:3;box-shadow:0 6px 12px -8px rgba(0,0,0,.25);padding:6px}
 .dz-sticky img,.dz-sticky img:only-child{width:auto;height:130px;aspect-ratio:1}
@@ -709,16 +715,12 @@ function viewToday() {
   if (plan && (plan.pieces || []).length) {
     const f = plan.fit && S.fits.find((x) => x.id === plan.fit);
     h += '<section class="card" aria-labelledby="fit-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="fit-h">' + esc(plan.title || 'Fit de hoje') + '</h2><button class="chip" data-edit-day="' + esc(plan.date) + '">Editar</button></div>'
-      + (hasOuter(plan.pieces) ? closeToggle('data-day-close', plan.date, plan.closed) : '')
-      + '<div style="display:flex;justify-content:center">' + dressedHtml(plan.pieces, 220, plan.closed) + '</div>'
+      + layerToggles('day', plan.date, plan.pieces, plan.closed, plan.opened)
+      + '<div style="display:flex;justify-content:center">' + dressedHtml(plan.pieces, 220, plan.closed, plan.opened) + '</div>'
       + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
       + (f ? rateHtml(f) : '') + '</section>';
-  } else {
-    const picks = activeFits().slice(0, 2);
-    h += '<section class="stack" aria-labelledby="pick-h"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="pick-h">Escolhe o fit de hoje</h2><button class="chip" data-tab="fits">Ver todas</button></div>';
-    h += picks.length ? picks.map((f) => fitCard(f, true)).join('') : '<div class="empty">Ainda não há fits guardados. Cria o teu com o botão abaixo.</div>';
-    h += buildBtn() + '</section>';
-  }
+    h += S.showTop ? topHtml() : '<button class="btn" data-show-top>Ver o top 3 de hoje na mesma</button>';
+  } else h += topHtml();
   h += '<section class="card" aria-labelledby="up-h"><h2 id="up-h">Foto ou vídeo do dia</h2>'
     + '<div class="seg" role="group" aria-label="Tipo de envio">'
     + '<button id="kind-vestido" data-kind="vestido" aria-pressed="' + (S.upKind === 'vestido') + '">Vestido (do dia)</button>'
@@ -777,34 +779,71 @@ function viewCloset() {
   return h;
 }
 
-// ---------- dressed view ----------
-function closeToggle(attr, id, closed) {
-  return '<div class="seg seg-sm" role="group" aria-label="Casaco"><button ' + attr + '="' + esc(id) + '" data-closed="0" aria-pressed="' + !closed + '">Casaco aberto</button><button ' + attr + '="' + esc(id) + '" data-closed="1" aria-pressed="' + !!closed + '">Fechado</button></div>';
+// ---------- dressed view: layers ----------
+// Order back → front: t-shirt, camisa, camisola, casaco. A layer only shows if everything above it is open,
+// and then only through that opening (a closed camisola hides the t-shirt completely).
+const txtOf = (p) => ((p.name || '') + ' ' + (p.tags || []).join(' ')).toLowerCase();
+function openKind(p) { // '' = não abre · 'half' = meio fecho · 'full' = abre toda
+  if (!p) return '';
+  const sub = subOf(p), d = p.design || {};
+  if (sub === 'outer') return 'full';
+  if (sub !== 'shirt' && sub !== 'sweater') return '';
+  if (p.opens === 'nao') return ''; if (p.opens === 'meio') return 'half'; if (p.opens === 'todo') return 'full';
+  if (sub === 'shirt') return d.closure === 'nenhum' || d.neck === 'polo' ? '' : 'full';
+  if (d.neck === 'meio-fecho' || /half.?zip|meio.?fecho|quarter.?zip|1\/4/.test(txtOf(p))) return 'half';
+  if (/full.?zip|cardigan|fecho completo|zip.?hoodie|hoodie.?zip/.test(txtOf(p))) return 'full';
+  return '';
 }
+const LAYERS = ['tee', 'shirt', 'sweater', 'outer'];
+const LAYER_LBL = { outer: ['Casaco aberto', 'Fechado'], sweater: ['Camisola aberta', 'Fechada'], shirt: ['Camisa aberta', 'Fechada'] };
 const hasOuter = (ids) => (ids || []).some((id) => { const p = pieceById(id); return p && subOf(p) === 'outer'; });
-function dressedHtml(ids, w, closed) {
+function torsoStack(ids) { const ps = (ids || []).map(pieceById).filter(Boolean); return LAYERS.map((s) => ps.find((p) => subOf(p) === s)).filter(Boolean); }
+// a mid layer is only worth opening if it is a half-zip or has something underneath
+const canToggle = (p, st) => { const k = openKind(p); return !!k && (subOf(p) === 'outer' || k === 'half' || st.indexOf(p) > 0); };
+const layerOpen = (p, st, closed, opened) => canToggle(p, st) && (subOf(p) === 'outer' ? !closed : (opened || []).includes(subOf(p)));
+function visibleTorso(ids, closed, opened) { // front → back, with the opening each one is seen through
+  const st = torsoStack(ids), out = []; let win = '';
+  for (let i = st.length - 1; i >= 0; i--) {
+    const p = st[i], open = layerOpen(p, st, closed, opened);
+    out.push({ p, win, open });
+    if (!open) break;
+    win = win === 'half' || openKind(p) === 'half' ? 'half' : subOf(p) === 'outer' ? win : 'band';
+  }
+  return out;
+}
+function layerToggles(scope, id, ids, closed, opened) {
+  const st = torsoStack(ids), list = st.filter((p) => canToggle(p, st)).reverse();
+  if (!list.length) return '';
+  return '<div class="ltog">' + list.map((p) => {
+    const sub = subOf(p), on = layerOpen(p, st, closed, opened), a = ' data-lt="' + scope + '" data-lt-id="' + esc(id) + '" data-lt-layer="' + sub + '"';
+    return '<div class="seg seg-sm" role="group" aria-label="' + esc(p.name) + '"><button' + a + ' data-lt-open="1" aria-pressed="' + on + '">' + LAYER_LBL[sub][0] + '</button><button' + a + ' data-lt-open="0" aria-pressed="' + !on + '">' + LAYER_LBL[sub][1] + '</button></div>';
+  }).join('') + '</div>';
+}
+const cleanOpened = (ids, opened) => { const st = torsoStack(ids); return (opened || []).filter((s) => st.some((p) => subOf(p) === s && canToggle(p, st))); };
+const CLIP_GAP = 'polygon(0 0,100% 0,100% 100%,58% 100%,54% 24%,46% 24%,42% 100%,0 100%)';
+const CLIP_V = 'polygon(0 0,43% 0,50% 40%,57% 0,100% 0,100% 100%,0 100%)';
+const WIN = { half: 'polygon(42% 0,58% 0,50.5% 41%,49.5% 41%)', band: 'inset(0 30% 0 30%)' };
+function dressedHtml(ids, w, closed, opened) {
   const ps = (ids || []).map(pieceById).filter(Boolean);
-  const pick = (sub) => ps.find((p) => subOf(p) === sub);
-  const outer = pick('outer'), sweater = pick('sweater'), shirt = pick('shirt'), tee = pick('tee');
   const bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
   const accs = ps.filter((p) => groupOf(p) === 'acc');
-  const tops = [tee, shirt, sweater].filter(Boolean); // back → front
   const L = [];
   const img = (p, cls, st) => '<img class="' + cls + '" src="' + pieceSrc(p) + '" alt="" style="' + st + '">';
   if (bottom) L.push(img(bottom, 'dl', 'left:9%;top:43%;width:82%;z-index:1'));
-  const isClosed = outer && closed;
-  if (!isClosed) tops.forEach((p, i) => {
-    const front = i === tops.length - 1;
-    const st = outer
-      ? 'left:2%;top:' + (front ? 1 : -2) + '%;width:96%;z-index:' + (2 + i)
-      : 'left:' + (front ? 2 : 0) + '%;top:' + (front ? 1 : -3) + '%;width:' + (front ? 96 : 100) + '%;z-index:' + (2 + i);
-    L.push(img(p, 'dl', st));
+  const vis = visibleTorso(ids, closed, opened);
+  vis.forEach((v, i) => {
+    const p = v.p, k = openKind(p), z = 5 - i;
+    const box = subOf(p) === 'outer' ? 'left:0;top:0;width:100%' : 'left:2%;top:1%;width:96%';
+    let src = pieceSrc(p), clip = '';
+    if (v.open) {
+      if (k === 'half') clip = CLIP_V;
+      else if (p.openIcon || !p.icon) src = pieceSrc(p, true);
+      else clip = CLIP_GAP;
+    }
+    // open half-zip with nothing under it: show the inside of the collar instead of a hole
+    if (v.open && k === 'half' && i === vis.length - 1) L.push('<span class="dw" style="' + box + ';z-index:' + z + ';aspect-ratio:1;clip-path:' + WIN.half + ';background:' + shade(p.color || '#888888', 0.55) + '"></span>');
+    L.push('<span class="dw" style="' + box + ';z-index:' + z + (v.win ? ';clip-path:' + WIN[v.win] : '') + '"><img src="' + src + '" alt=""' + (clip ? ' style="clip-path:' + clip + '"' : '') + '></span>');
   });
-  if (outer) {
-    const canOpen = outer.openIcon || (!outer.icon && outer.design);
-    if (isClosed || !canOpen) L.push(img(outer, 'dl', 'left:0;top:0;width:100%;z-index:5' + (isClosed ? '' : ';clip-path:polygon(0 0,100% 0,100% 100%,58% 100%,54% 24%,46% 24%,42% 100%,0 100%)')));
-    else L.push('<img class="dl" src="' + pieceSrc(outer, true) + '" alt="" style="left:0;top:0;width:100%;z-index:5">');
-  }
   if (shoe) {
     if (shoe.pair) L.push(img(shoe, 'dl', 'left:28%;top:73%;width:44%;z-index:6'));
     else { L.push(img(shoe, 'dl', 'left:12%;top:74%;width:40%;z-index:6;transform:scaleX(-1)')); L.push(img(shoe, 'dl', 'left:48%;top:74%;width:40%;z-index:6')); }
@@ -812,6 +851,273 @@ function dressedHtml(ids, w, closed) {
   accs.slice(0, 2).forEach((p, i) => L.push(img(p, 'dl', 'left:' + (i ? 70 : 0) + '%;top:56%;width:30%;z-index:7')));
   const names = ps.map((p) => p.name).join(', ');
   return '<div class="dress" role="img" aria-label="Fit vestido: ' + esc(names) + '" style="width:' + (w || 200) + 'px">' + (L.length ? L.join('') : '<span class="dress-empty">Escolhe peças para ver o fit</span>') + '</div>';
+}
+
+// ---------- colour, pattern and style sense (used by the daily proposals) ----------
+function hsl(hex) {
+  let n = parseInt(String(hex || '').replace('#', ''), 16); if (isNaN(n)) n = 0x888888;
+  const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) { s = d / (1 - Math.abs(2 * l - 1) || 1); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+  return { h, s, l };
+}
+const famCache = new Map();
+function colorFam(hex) { // neutral = goes with everything · semi = navy, ganga, bege, castanho, azeitona (quase neutros) · accent = cor a sério
+  const key = String(hex || ''); if (famCache.has(key)) return famCache.get(key);
+  const { h, s, l } = hsl(hex); let fam, kind = 'accent';
+  if (l < 0.13 || (l < 0.22 && s < 0.25)) { fam = 'preto'; kind = 'neutral'; }
+  else if (l > 0.82 && s < 0.45) { fam = 'branco'; kind = 'neutral'; }
+  else if (s < 0.12) { fam = 'cinzento'; kind = 'neutral'; }
+  else if (h >= 195 && h < 260 && l < 0.3) { fam = 'azul-marinho'; kind = 'semi'; }
+  else if (h >= 190 && h < 250 && s < 0.5) { fam = 'azul ganga'; kind = 'semi'; }
+  else if (h >= 15 && h < 55 && s < 0.55 && l >= 0.55) { fam = 'bege'; kind = 'semi'; }
+  else if (h >= 8 && h < 48 && l < 0.55 && s < 0.7) { fam = 'castanho'; kind = 'semi'; }
+  else if (h >= 48 && h < 115 && s < 0.42 && l < 0.5) { fam = 'verde-azeitona'; kind = 'semi'; }
+  else fam = h < 12 || h >= 345 ? (l < 0.35 ? 'bordô' : l > 0.6 ? 'rosa' : 'vermelho') : h < 40 ? 'laranja' : h < 66 ? 'amarelo' : h < 165 ? 'verde' : h < 195 ? 'turquesa' : h < 258 ? 'azul' : h < 292 ? 'roxo' : 'rosa';
+  const r = { fam, kind, h, s, l }; famCache.set(key, r); return r;
+}
+function patType(p) { // '' | riscas | xadrez | estampa
+  const d = p.design || {}, t = txtOf(p);
+  if (d.pattern === 'riscas' || d.pattern === 'riscas-v') return 'riscas';
+  if (d.pattern === 'xadrez') return 'xadrez';
+  if (d.pattern === 'pontos' || d.pattern === 'camuflado' || d.print === 'estampa') return 'estampa';
+  if (p.design) return '';
+  if (/risca|listra/.test(t)) return 'riscas';
+  if (/xadrez|quadrad|tartan|vichy/.test(t)) return 'xadrez';
+  if (/pintas|bolinhas|floral|flores|camuflad|estampad|padrão/.test(t)) return 'estampa';
+  return '';
+}
+function formality(p) { // -1 desportivo · 0 casual · 1 arranjado
+  const d = p.design || {}, t = txtOf(p), sub = subOf(p);
+  if (sub === 'shoe') return d.type === 'chinelo' || /chinelo/.test(t) ? -1 : ['sapato', 'mocassim', 'chelsea'].includes(d.type) || /sapato|mocassim|chelsea|loafer|derby|oxford/.test(t) ? 1 : 0;
+  if (sub === 'sweater') return d.neck === 'capuz' || /hoodie|capuz|sweat/.test(t) ? -1 : 0;
+  if (sub === 'pants') return d.fit === 'jogger' || /jogger|treino/.test(t) ? -1 : d.crease === 'sim' || /chino|vinco|alfaiataria|fato/.test(t) ? 1 : 0;
+  if (sub === 'shorts') return /desporto|treino|banho/.test(t) || d.waist === 'elastico' ? -1 : 0;
+  if (sub === 'outer') return /blazer|sobretudo/.test(t) ? 1 : 0;
+  return 0;
+}
+const WARM = { tee: [0.8, 1, 1.6], shirt: [1.3, 1.6, 2.3], sweater: [2.3, 3, 3.7], outer: [2.4, 3.5, 5] };
+function warmthOf(p) {
+  const d = p.design || {}, t = txtOf(p), sub = subOf(p), W = WARM[sub];
+  if (W) {
+    if (p.warm === 'leve') return W[0]; if (p.warm === 'media') return W[1]; if (p.warm === 'quente') return W[2];
+    if (sub === 'tee') return d.sleeve === 'comprida' || /manga comprida/.test(t) ? W[2] : d.sleeve === 'sem' ? W[0] : W[1];
+    if (sub === 'shirt') return ['pelo', 'bombazina'].includes(d.texture) || /flanela|sobrecamisa|overshirt|bombazina/.test(t) ? W[2] : d.sleeve === 'curta' || /linho|manga curta/.test(t) ? W[0] : W[1];
+    if (sub === 'sweater') return ['malha', 'pelo'].includes(d.texture) || /lã|malha grossa|polar|sherpa|grossa/.test(t) ? W[2] : d.sleeve === 'curta' || /fina|leve/.test(t) ? W[0] : W[1];
+    return ['acolchoado', 'losangos', 'pelo'].includes(d.texture) || /puffer|acolchoad|penas|parka|sobretudo|lã|sherpa/.test(t) ? W[2] : d.texture === 'ganga' || /ganga|denim|corta-vento|bomber|blazer|sobrecamisa|leve/.test(t) ? W[0] : W[1];
+  }
+  if (sub === 'shorts') return -1.6;
+  if (sub === 'pants') return d.texture === 'bombazina' || /bombazina|lã/.test(t) ? 0.4 : 0;
+  if (sub === 'shoe') return d.type === 'chinelo' || /chinelo|sandália/.test(t) ? -1 : d.type === 'bota' || /bota/.test(t) ? 0.4 : 0;
+  return 0;
+}
+
+// ---------- weather (Open-Meteo, sem chave; a localização fica só neste aparelho) ----------
+const WX = { data: null, busy: false, err: '', tried: 0 };
+try { const w = JSON.parse(pref('wx') || 'null'); if (w && w.day) WX.data = w; } catch (e) {}
+const SEASON = [12, 13, 15, 17, 20, 24, 27, 27, 24, 20, 15, 12]; // sensação típica por mês, para quando não há previsão
+const MANUAL = { frio: 8, fresco: 14, ameno: 19, quente: 26 };
+const wxLoc = () => { try { return JSON.parse(pref('loc') || 'null'); } catch (e) { return null; } };
+const wxToday = () => (WX.data && WX.data.day === today() ? WX.data : null);
+function wxNow() { // what the proposals dress for
+  const m = pref('wxmanual');
+  if (m && MANUAL[m]) return { feel: MANUAL[m], rain: false, wind: 0, src: 'manual', manual: m };
+  const w = wxToday();
+  if (w) return { feel: Math.round((0.6 * w.amax + 0.4 * w.amin) * 10) / 10, rain: w.pp >= 50 || w.psum >= 1, wind: w.wind || 0, src: 'live', w };
+  return { feel: SEASON[new Date().getMonth()], rain: false, wind: 0, src: 'season' };
+}
+const wxDesc = (c) => c === 0 ? 'céu limpo' : c <= 2 ? 'pouco nublado' : c === 3 ? 'nublado' : c <= 48 ? 'nevoeiro' : c <= 57 ? 'chuvisco' : c <= 67 ? 'chuva' : c <= 77 ? 'neve' : c <= 82 ? 'aguaceiros' : c <= 86 ? 'neve' : 'trovoada';
+async function wxFetch() {
+  const loc = wxLoc(); if (!loc || WX.busy) return;
+  WX.busy = true; WX.tried = Date.now(); WX.err = '';
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + loc.lat + '&longitude=' + loc.lon
+      + '&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,weather_code,wind_speed_10m_max&timezone=auto&forecast_days=1';
+    const res = await fetch(url); if (!res.ok) throw new Error('http');
+    const d = (await res.json()).daily, v = (k) => { const x = d[k] && d[k][0]; return typeof x === 'number' ? x : null; };
+    const tmax = v('temperature_2m_max'), tmin = v('temperature_2m_min'); if (tmax === null || tmin === null) throw new Error('data');
+    WX.data = { day: today(), at: Date.now(), tmax, tmin, amax: v('apparent_temperature_max') ?? tmax, amin: v('apparent_temperature_min') ?? tmin, pp: v('precipitation_probability_max') || 0, psum: v('precipitation_sum') || 0, code: v('weather_code') || 0, wind: v('wind_speed_10m_max') || 0 };
+    pref('wx', JSON.stringify(WX.data));
+  } catch (e) { WX.err = 'Não consegui ir buscar a previsão. Verifica a ligação.'; }
+  WX.busy = false; render();
+}
+function wxLocate() {
+  if (!navigator.geolocation) { WX.err = 'Este browser não dá a localização.'; render(); return; }
+  WX.busy = true; WX.err = ''; render();
+  navigator.geolocation.getCurrentPosition((pos) => {
+    // rounded to ~1 km: enough for a forecast, and it is the only thing sent out
+    pref('loc', JSON.stringify({ lat: Math.round(pos.coords.latitude * 100) / 100, lon: Math.round(pos.coords.longitude * 100) / 100 }));
+    pref('wxmanual', ''); WX.busy = false; wxFetch();
+  }, () => { WX.busy = false; WX.err = 'Sem acesso à localização. Autoriza-a nas definições do browser ou escolhe a temperatura à mão.'; render(); }, { maximumAge: 3600000, timeout: 15000 });
+}
+function wxAuto() { // refresh quietly: once a day, then every 3 h, never more than one try per 10 min
+  const w = wxToday();
+  if (wxLoc() && !WX.busy && navigator.onLine !== false && (!w || Date.now() - w.at > 3 * 3600000) && Date.now() - WX.tried > 600000) wxFetch();
+}
+function wxHtml() {
+  const n = wxNow(), w = n.w, r = (x) => Math.round(x);
+  let line;
+  if (n.src === 'live') line = '<strong>' + r(w.tmin) + '–' + r(w.tmax) + ' °C</strong> · ' + wxDesc(w.code) + ' · sensação ' + r(n.feel) + ' °C' + (w.pp >= 30 || w.psum >= 1 ? ' · chuva ' + r(w.pp) + ' %' : '') + (w.wind >= 30 ? ' · vento ' + r(w.wind) + ' km/h' : '');
+  else if (n.src === 'manual') line = 'Dia <strong>' + n.manual + '</strong> (escolhido por ti, ≈ ' + n.feel + ' °C)';
+  else line = 'Sem previsão: a contar com <strong>≈ ' + n.feel + ' °C</strong>, o normal para esta altura do ano.';
+  let h = '<div class="wx"><p>' + line + '</p><div class="chips" role="group" aria-label="Tempo">'
+    + '<button class="chip" data-wx-locate' + (WX.busy ? ' disabled' : '') + ' aria-pressed="' + (n.src === 'live') + '">' + (WX.busy ? 'A ver o tempo…' : wxLoc() ? 'Previsão local' : 'Usar a minha localização') + '</button>'
+    + Object.keys(MANUAL).map((k) => '<button class="chip" data-wx-manual="' + k + '" aria-pressed="' + (n.manual === k) + '">' + k[0].toUpperCase() + k.slice(1) + '</button>').join('') + '</div>';
+  if (WX.err) h += '<p class="status err" role="status">' + esc(WX.err) + '</p>';
+  return h + '</div>';
+}
+
+// ---------- daily top 3 ----------
+const fitKey = (ids) => ids.slice().sort().join('|');
+function propSkips() { try { const s = JSON.parse(pref('skip') || 'null'); return s && s.day === today() ? s.keys : []; } catch (e) { return []; } }
+function harmony(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { score, notes }
+  const notes = []; let score = 0;
+  const items = F.vis.map((v) => ({ p: v.p, w: v.w, c: colorFam(v.p.color) }));
+  const weight = new Map(); items.forEach((x) => weight.set(x.c.fam, (weight.get(x.c.fam) || 0) + x.w));
+  const acc = new Map(); items.filter((x) => x.c.kind === 'accent').forEach((x) => { const a = acc.get(x.c.fam) || { h: x.c.h, w: 0 }; a.w = Math.max(a.w, x.w); acc.set(x.c.fam, a); });
+  const names = [...acc.keys()];
+  if (acc.size === 0) { score += [...weight.keys()].length > 1 ? 0.6 : 0.3; notes.push('Tons neutros'); }
+  else if (acc.size === 1) { score += 1; notes.push('Uma cor de destaque (' + names[0] + ') sobre neutros'); }
+  else if (acc.size === 2) {
+    const [a, b] = [...acc.values()]; let d = Math.abs(a.h - b.h); d = Math.min(d, 360 - d);
+    if (d <= 45) { score += 0.7; notes.push('Cores vizinhas: ' + names.join(' e ')); }
+    else if (d >= 150) { const big = a.w >= 3 && b.w >= 3; score += big ? 0.1 : 0.5; notes.push('Cores opostas: ' + names.join(' e ')); }
+    else score -= 0.7;
+  } else score -= 1.6;
+  // regra das três cores, com uma dominante (60-30-10)
+  const fams = [...weight.entries()].sort((x, y) => y[1] - x[1]), total = fams.reduce((s, x) => s + x[1], 0);
+  if (fams.length <= 3) score += 0.3; else score -= 0.5 * (fams.length - 3);
+  if (fams.length > 1 && fams[0][1] / total >= 0.45) { score += 0.3; if (acc.size !== 1) notes.push('Base em ' + fams[0][0]); }
+  if (weight.has('preto') && weight.has('azul-marinho') && weight.get('preto') >= 3 && weight.get('azul-marinho') >= 3) score -= 0.3;
+  // contraste entre cima e baixo
+  if (F.main && F.bottom) {
+    const a = colorFam(F.main.color), b = colorFam(F.bottom.color), d = Math.abs(a.l - b.l);
+    if (d < 0.07) score -= a.fam === b.fam ? 0.5 : 0.2; else if (d >= 0.2) score += 0.4;
+  }
+  // calçado: neutro ou a repetir uma cor do resto
+  if (F.shoe) { const c = colorFam(F.shoe.color); const echo = items.some((x) => x.p !== F.shoe && x.c.fam === c.fam); score += echo ? 0.3 : c.kind !== 'accent' ? 0.2 : -0.5; }
+  // padrões: um chega; dois só se forem de tipos diferentes
+  const pats = items.map((x) => ({ p: x.p, t: patType(x.p) })).filter((x) => x.t);
+  if (pats.length === 1) {
+    score += 0.25; notes.push('Um padrão, o resto liso');
+    const c2 = pats[0].p.design && pats[0].p.design.color2;
+    if (c2 && items.some((x) => x.p !== pats[0].p && x.c.fam === colorFam(c2).fam)) score += 0.2;
+  } else if (pats.length === 2) score -= pats[0].t === pats[1].t ? 0.9 : 0.3;
+  else if (pats.length > 2) score -= 1.8;
+  // estilo
+  const fs = items.map((x) => formality(x.p));
+  if (Math.min(...fs) < 0 && Math.max(...fs) > 0) score -= 0.8;
+  return { score, notes };
+}
+let propCache = { key: '', res: null };
+function proposals() {
+  const wx = wxNow(), skips = propSkips();
+  const key = [today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  if (propCache.key === key) return propCache.res;
+  const by = (sub) => S.pieces.filter((p) => subOf(p) === sub);
+  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = by('shoe');
+  const bottoms = S.pieces.filter((p) => groupOf(p) === 'bottom');
+  const T = wx.feel, target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
+  // top combinations, back → front
+  const tops = [];
+  tees.forEach((a) => tops.push([a])); shirts.forEach((a) => tops.push([a])); sweaters.forEach((a) => tops.push([a]));
+  tees.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
+  tees.forEach((a) => shirts.forEach((b) => { if (openKind(b) === 'full') tops.push([a, b]); }));
+  shirts.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
+  const outs = T > 23 ? [null] : [null, ...outers];
+  // what history says
+  const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
+  worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
+  S.fits.forEach((f) => {
+    const ids = f.pieces || []; fitBy.set(fitKey(ids), f);
+    if (typeof f.rating !== 'number' && f.status !== 'rejeitada') return;
+    const dlt = (f.status === 'rejeitada' ? -1.5 : (f.rating - 3) / 2) * 0.08;
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]; pairW.set(k, (pairW.get(k) || 0) + dlt); }
+  });
+  const idle = new Map(S.pieces.map((p) => { const s = sinceLast(p); return [p.id, s === null ? 40 + Math.min(20, diffDays(addedDay(p), t)) : Math.min(60, s)]; }));
+  const total = bottoms.length * shoes.length * tops.length * outs.length, step = Math.max(1, Math.ceil(total / 25000));
+  const cands = []; let n = 0;
+  for (const bottom of bottoms) for (const shoe of shoes) for (const tp of tops) for (const outer of outs) {
+    if (n++ % step) continue;
+    const ps = [...tp, ...(outer ? [outer] : []), bottom, shoe], ids = ps.map((p) => p.id), k = fitKey(ids);
+    const known = fitBy.get(k);
+    if (skips.includes(k) || (known && known.status === 'rejeitada')) continue;
+    // --- weather ---
+    // warmth is counted on the torso (plus heavy trousers); legs and feet follow their own rules below
+    const W = ps.reduce((s, p) => s + (WARM[subOf(p)] || subOf(p) === 'pants' ? warmthOf(p) : 0), 0), isShorts = subOf(bottom) === 'shorts', sw = warmthOf(shoe), flip = sw < 0, front = tp[tp.length - 1];
+    let wxs = -0.55 * Math.abs(W - target);
+    if (isShorts) wxs += T < 21 ? -3 : T >= 26 ? 0.5 : 0;
+    if (flip && (T < 24 || wx.rain)) wxs -= 3;
+    if (sw > 0) wxs += T >= 23 ? -0.8 : T < 12 || wx.rain ? 0.3 : 0;
+    if (!isShorts && T >= 29) wxs -= 0.5;
+    if (!outer && T < 12) wxs -= 1;
+    if (outer && T > 21) wxs -= 1.5;
+    if (subOf(front) === 'sweater' && T > 25) wxs -= 1;
+    if (wx.rain) { if (outer) wxs += (outer.design && outer.design.neck === 'capuz') || /capuz|impermeável/.test(txtOf(outer)) ? 0.8 : 0.6; else if (T < 24) wxs -= 0.6; if (colorFam(shoe.color).l > 0.8) wxs -= 0.3; }
+    // --- colour / pattern / style, on what is actually seen (coat open, the rest closed) ---
+    const vis = visibleTorso(ids, false, []).map((v, i) => ({ p: v.p, w: i === 0 ? 3 : v.win ? 0.5 : 2 }));
+    const main = outer && vis.length > 1 ? vis[1].p : vis[0].p;
+    vis.push({ p: bottom, w: isShorts ? 2 : 3 }, { p: shoe, w: 1 });
+    const hm = harmony({ vis, main, bottom, shoe });
+    // --- history ---
+    let hist = 0;
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) hist += pairW.get(ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]) || 0;
+    hist = Math.max(-0.8, Math.min(0.8, hist));
+    if (known && typeof known.rating === 'number') hist += (known.rating - 3) * 0.35;
+    if (known && known.status === 'gosto') hist += 0.3;
+    tp.forEach((p) => { if (recent.has(p.id)) hist -= 0.4; });
+    if (lastKeys.has(k)) hist -= 2;
+    const idl = ps.reduce((s, p) => s + idle.get(p.id), 0) / ps.length;
+    cands.push({ ids, k, ps, wxs, hm, base: wxs + hm.score + hist, idl, known, W });
+  }
+  const res = { wx, list: [] };
+  if (cands.length) {
+    const share = (a, b) => a.ids.filter((id) => b.ids.includes(id)).length / Math.min(a.ids.length, b.ids.length);
+    const best = (score, ok) => { let m = null, ms = -1e9; for (const c of cands) { if (res.list.some((x) => x.c === c) || (ok && !ok(c))) continue; const s = score(c); if (s > ms) { ms = s; m = c; } } return m; };
+    const wxBest = Math.max(...cands.map((c) => c.wxs));
+    const add = (label, c) => { if (c) res.list.push({ label, c }); };
+    add('Melhor para hoje', best((c) => c.base + c.idl * 0.01));
+    const first = res.list[0].c;
+    add('A dar uso ao que está parado', best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3 && c.hm.score >= Math.min(0.4, first.hm.score - 0.6) && share(c, first) <= 0.6)
+      || best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3));
+    add('Para variar', best((c) => c.base, (c) => res.list.every((x) => share(c, x.c) <= 0.5)) || best((c) => c.base, (c) => res.list.every((x) => share(c, x.c) < 1)));
+    res.list.forEach((x) => {
+      const c = x.c, notes = [];
+      const lay = c.ps.filter((p) => WARM[subOf(p)]).length;
+      notes.push(wx.rain && c.ps.some((p) => subOf(p) === 'outer') ? 'Casaco para a chuva' : lay >= 3 ? lay + ' camadas para ' + Math.round(T) + ' °C' : subOf(c.ps[c.ps.length - 2]) === 'shorts' ? 'Leve para ' + Math.round(T) + ' °C' : 'À medida de ' + Math.round(T) + ' °C');
+      notes.push(...c.hm.notes.slice(0, 2));
+      const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
+      if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
+      if (c.known && typeof c.known.rating === 'number') notes.push('Já lhe deste ' + num(c.known.rating) + ' ★');
+      x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null;
+    });
+  }
+  propCache = { key, res }; return res;
+}
+function propCard(x, i) {
+  const ps = x.ids.map(pieceById).filter(Boolean);
+  return '<article class="card" aria-label="' + esc(x.label) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + esc(x.known.title || 'Já nos teus fits') + '</span>' : '') + '</div>'
+    + '<div class="fitview">' + dressedHtml(x.ids, 150, false, []) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
+    + '<div class="tags">' + x.notes.map((n) => '<span>' + esc(n) + '</span>').join('') + '</div>'
+    + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-prop-skip="' + i + '" aria-label="Outra proposta em vez desta" title="Outra proposta" style="flex:none;width:50px;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>'
+    + '<button class="btn" data-prop-edit="' + i + '" style="flex:none;padding:0 14px">Ajustar</button>'
+    + '<button class="btn primary" data-prop-use="' + i + '" style="flex:1">Vou usar hoje</button></div></article>';
+}
+function topHtml() {
+  wxAuto();
+  const R = proposals();
+  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="top-h">Top 3 para hoje</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
+  h += R.list.length ? R.list.map(propCard).join('') : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
+  return h + buildBtn() + '</section>';
+}
+async function useProposal(x) {
+  if (!x || !db) return;
+  if (x.known) { useFit(x.known.id); return; }
+  const t = today(), d = parse(t), title = 'Proposta de ' + d.getDate() + ' ' + MONTHS[d.getMonth()], reason = x.notes.join(' · ');
+  try {
+    const ref = await db.collection('fits').add({ title, pieces: x.ids, reason, tags: ['Proposta do dia'], status: 'proposta', source: 'app', closed: false, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() });
+    await db.doc('days/' + t).set({ date: t, title, pieces: x.ids, reason, worn: true, closed: false, fit: ref.id, chosenAt: new Date().toISOString() });
+  } catch (e) {}
 }
 
 // ---------- fits ----------
@@ -834,11 +1140,11 @@ function fitCard(f, compact) {
   const usedToday = S.days.some((d) => d.date === today() && d.fit === f.id);
   const saved = f.status === 'gosto';
   let h = '<article class="card" aria-label="' + esc(f.title) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2>' + esc(f.title) + '</h2>'
-    + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</div>';
-  if (hasOuter(f.pieces)) h += closeToggle('data-fit-close', f.id, f.closed);
-  h += '<div class="fitview">' + dressedHtml(f.pieces, compact ? 150 : 190, f.closed) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
+    + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : f.source === 'app' ? '<span class="badge">Proposta do dia</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</div>';
+  h += layerToggles('fit', f.id, f.pieces, f.closed, f.opened);
+  h += '<div class="fitview">' + dressedHtml(f.pieces, compact ? 150 : 190, f.closed, f.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
   if (!compact) {
-    const tags = (f.tags || []).filter((x) => x !== 'Criado por mim');
+    const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
     if (tags.length) h += '<div class="tags">' + tags.map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>';
     if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(f.reason) + '</p>';
     if (f.timesUsed) h += '<p class="status" style="font-size:13px">Usado ' + f.timesUsed + '×' + (f.lastUsed ? ' · último a ' + esc(fmtShort(f.lastUsed)) : '') + '</p>';
@@ -849,8 +1155,9 @@ function fitCard(f, compact) {
     + '<button class="btn" data-fit-like="' + esc(f.id) + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Tirar dos guardados' : 'Guardar este fit') + '" style="flex:none;width:50px;padding:0;color:' + (saved ? 'var(--new-ink)' : 'inherit') + '"><svg width="20" height="20" viewBox="0 0 24 24" fill="' + (saved ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg></button>'
     + (usedToday ? '<span class="btn" style="flex:1;background:var(--accent-soft);color:var(--accent-soft-ink);border-color:transparent">Escolhido para hoje</span>'
       : '<button class="btn primary" data-fit-use="' + esc(f.id) + '" style="flex:1">Vou usar hoje</button>')
-    + '</div></article>';
-  return h;
+    + '</div>';
+  if (!compact) h += '<button class="btn" data-fit-base="' + esc(f.id) + '" style="min-height:40px;font-size:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Criar outro a partir deste</button>';
+  return h + '</article>';
 }
 
 function activeFits() {
@@ -862,7 +1169,7 @@ function dayCard(d) {
   const ps = (d.pieces || []).map(pieceById).filter(Boolean);
   const f = d.fit && S.fits.find((x) => x.id === d.fit);
   return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
-    + '<div class="fitview">' + dressedHtml(d.pieces, 120, d.closed) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
+    + '<div class="fitview">' + dressedHtml(d.pieces, 120, d.closed, d.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
 
@@ -1000,6 +1307,7 @@ function pieceSheet(p) {
     + '<div><small>Últimos 6 meses</small><strong>' + inPeriod(182) + '×</strong></div>'
     + '<div><small>Últimos 12 meses</small><strong>' + inPeriod(365) + '×</strong></div>'
     + '</div>'
+    + pieceSetHtml(p)
     + (topPartners.length ? '<h3>Usada mais vezes com</h3><div class="pairs">' + topPartners.map(([id, n]) => { const q = pieceById(id); return '<button class="pair" data-open="' + esc(id) + '" style="border:none;background:none;padding:0;text-align:left"><span class="mini"><span><img src="' + pieceSrc(q) + '" alt=""></span></span><span>' + esc(q.name) + '</span><b>' + n + '×</b></button>'; }).join('') + '</div>' : '')
     + (p.photo ? '<button class="orig" data-view="' + esc(p.photo) + '" data-view-alt="Foto original de ' + esc(p.name) + '" style="background:none;text-align:left;width:100%"><img src="' + blob(p.photo) + '" alt="Foto original de ' + esc(p.name) + '"><div><h3>Foto original</h3><p class="status">' + esc(p.source || '') + ' · toca para ver em grande</p></div></button>' : '')
     + (S.confirmDel
@@ -1009,6 +1317,13 @@ function pieceSheet(p) {
     + '</section></div>';
 }
 
+function pieceSetHtml(p) { // small per-piece settings the layers and the daily proposals rely on
+  const sub = subOf(p), chips = (key, cur, opts) => '<div class="chips" role="group">' + opts.map(([v, l]) => '<button class="chip" data-pset="' + key + '" data-pval="' + v + '" aria-pressed="' + ((cur || '') === v) + '">' + l + '</button>').join('') + '</div>';
+  let h = '';
+  if (sub === 'sweater' || sub === 'shirt') { const k = openKind(Object.assign({}, p, { opens: '' })); h += '<h3>Abre à frente?</h3>' + chips('opens', p.opens, [['', 'Automático (' + (k === 'half' ? 'meio fecho' : k === 'full' ? 'toda' : 'não') + ')'], ['nao', 'Não'], ['meio', 'Meio fecho'], ['todo', 'Toda']]) + '<p class="status" style="font-size:13px">Só se vê o que está por baixo quando esta peça está aberta.</p>'; }
+  if (WARM[sub]) { const w = warmthOf(Object.assign({}, p, { warm: '' })), W = WARM[sub]; h += '<h3>Quão quente é?</h3>' + chips('warm', p.warm, [['', 'Automático (' + (w === W[0] ? 'leve' : w === W[2] ? 'quente' : 'média') + ')'], ['leve', 'Leve'], ['media', 'Média'], ['quente', 'Quente']]) + '<p class="status" style="font-size:13px">Usado nas propostas do dia, conforme a temperatura.</p>'; }
+  return h;
+}
 function builderState() {
   const sel = S.builder.sel.map(pieceById).filter(Boolean);
   const has = (g) => sel.some((p) => groupOf(p) === g);
@@ -1021,8 +1336,10 @@ function builderHtml() {
   const hint = { outer: 'opcional · 1 no máximo', top: '1 por tipo · podes juntar t-shirt e camisola', bottom: 'obrigatório · só 1 (calças ou calções)', shoe: 'obrigatório · só 1', acc: 'opcional' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
     + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar o fit de hoje' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
-    + (hasOuter(B.sel) ? closeToggle('data-b-close', 'b', B.closed) : '')
-    + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(B.sel, 170, B.closed) + '</div>'
+    + (B.editDay ? '' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
+      : activeFits().length ? '<label class="field" for="bbase">Começar a partir de um fit que já tens<select id="bbase"><option value="">Não, começar do zero</option>' + activeFits().map((f) => '<option value="' + esc(f.id) + '">' + esc(f.title) + '</option>').join('') + '</select></label>' : '')
+    + layerToggles('b', 'b', B.sel, B.closed, B.opened)
+    + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(B.sel, 170, B.closed, B.opened) + '</div>'
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
   h += groups.map((g) => '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + g.s.label + '</h3><span class="eyebrow" style="font-size:12px">' + hint[g.s.group] + '</span></div><div class="pickrow">'
     + g.ps.map((p) => { const on = B.sel.includes(p.id); return '<button class="pick" data-bpick="' + esc(p.id) + '" aria-pressed="' + on + '"><span class="pic"><img src="' + pieceSrc(p) + '" alt=""></span><span>' + esc(p.name) + '</span></button>'; }).join('')
@@ -1036,6 +1353,12 @@ function builderHtml() {
   return h + '</section></div>';
 }
 
+function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
+  const f = S.fits.find((x) => x.id === id); if (!f) return;
+  S.open = null;
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), baseTitle: f.title || 'Fit' };
+  renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
+}
 function togglePick(id) {
   const p = pieceById(id); if (!p) return;
   const B = S.builder, i = B.sel.indexOf(id);
@@ -1055,21 +1378,21 @@ async function saveBuilder(mode) {
   const title = (nameEl && nameEl.value.trim()) || 'O meu fit';
   const pieces = B.sel.slice().sort((a, b) => SUB_ORDER.indexOf(subOf(pieceById(a))) - SUB_ORDER.indexOf(subOf(pieceById(b))));
   try {
-    const closed = !!B.closed && hasOuter(pieces);
+    const closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(pieces, B.opened);
     if (mode === 'edit') {
       const t = B.editDay, day = S.days.find((x) => x.date === t) || {};
       const f = day.fit && S.fits.find((x) => x.id === day.fit);
       const same = f && f.pieces && f.pieces.slice().sort().join() === pieces.slice().sort().join();
       let fitId = day.fit || null;
-      if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed });
-      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
+      if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened });
+      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
+      await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
       S.builder = null; renderSheet(); return;
     }
-    const ref = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, createdAt: new Date().toISOString() });
+    const ref = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, createdAt: new Date().toISOString() });
     if (mode === 'hoje') {
       const t = today();
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, fit: ref.id, chosenAt: new Date().toISOString() });
+      await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, fit: ref.id, chosenAt: new Date().toISOString() });
       await ref.update({ lastUsed: t, timesUsed: 1 });
     }
     S.builder = null; renderSheet();
@@ -1145,7 +1468,7 @@ async function useFit(id) {
   const f = S.fits.find((x) => x.id === id); if (!f || !db) return;
   const t = today();
   try {
-    await db.doc('days/' + t).set({ date: t, title: f.title, pieces: f.pieces || [], reason: f.reason || '', worn: true, closed: !!f.closed, fit: f.id, chosenAt: new Date().toISOString() });
+    await db.doc('days/' + t).set({ date: t, title: f.title, pieces: f.pieces || [], reason: f.reason || '', worn: true, closed: !!f.closed, opened: f.opened || [], fit: f.id, chosenAt: new Date().toISOString() });
     await db.doc('fits/' + f.id).update({ lastUsed: t, timesUsed: (f.timesUsed || 0) + 1 });
   } catch (e) {}
 }
@@ -1283,7 +1606,7 @@ function genTop(d, open) {
   if (neck === 'redonda') out += '<path d="M' + (cx - nw) + ' ' + ny + ' Q' + cx + ' ' + (ny + 18) + ' ' + (cx + nw) + ' ' + ny + ' Q' + cx + ' ' + (ny + 40) + ' ' + (cx - nw) + ' ' + ny + ' Z" ' + band + '/>';
   if (neck === 'v') out += '<path d="M' + (cx - nw) + ' ' + ny + ' L' + cx + ' ' + (ny + 70) + ' L' + (cx + nw) + ' ' + ny + ' L' + (cx + nw - 12) + ' ' + ny + ' L' + cx + ' ' + (ny + 52) + ' L' + (cx - nw + 12) + ' ' + ny + ' Z" ' + band + '/><path d="M' + (cx - nw + 12) + ' ' + ny + ' L' + cx + ' ' + (ny + 52) + ' L' + (cx + nw - 12) + ' ' + ny + ' Q' + cx + ' ' + (ny + 12) + ' ' + (cx - nw + 12) + ' ' + ny + ' Z" fill="' + shade(c, 0.55) + '"/>';
   if (neck === 'polo') out += '<rect x="' + (cx - 9) + '" y="' + (ny + 14) + '" width="18" height="60" fill="' + dk + '" ' + S3 + '/><circle cx="' + cx + '" cy="' + (ny + 36) + '" r="3.5" fill="' + c3 + '"/><circle cx="' + cx + '" cy="' + (ny + 58) + '" r="3.5" fill="' + c3 + '"/><path d="M' + (cx - nw) + ' ' + ny + ' L' + (cx - nw - 8) + ' ' + (ny + 30) + ' L' + (cx - 10) + ' ' + (ny + 24) + ' Z" ' + band + '/><path d="M' + (cx + nw) + ' ' + ny + ' L' + (cx + nw + 8) + ' ' + (ny + 30) + ' L' + (cx + 10) + ' ' + (ny + 24) + ' Z" ' + band + '/>';
-  if (neck === 'camisa') out += '<path d="M' + (cx - nw) + ' ' + (ny - 6) + ' Q' + cx + ' ' + (ny - 14) + ' ' + (cx + nw) + ' ' + (ny - 6) + ' L' + (cx + nw) + ' ' + ny + ' L' + (cx - nw) + ' ' + ny + ' Z" ' + band + '/><path d="M' + (cx - nw) + ' ' + (ny - 4) + ' L' + (cx - nw + 2) + ' ' + (ny + 40) + ' L' + (cx - 2) + ' ' + (ny + 20) + ' Z" fill="' + c + '" ' + S + '/><path d="M' + (cx + nw) + ' ' + (ny - 4) + ' L' + (cx + nw - 2) + ' ' + (ny + 40) + ' L' + (cx + 2) + ' ' + (ny + 20) + ' Z" fill="' + c + '" ' + S + '/>';
+  if (neck === 'camisa') out += '<path d="M' + (cx - nw) + ' ' + (ny - 6) + ' Q' + cx + ' ' + (ny - 14) + ' ' + (cx + nw) + ' ' + (ny - 6) + ' L' + (cx + nw) + ' ' + ny + ' L' + (cx - nw) + ' ' + ny + ' Z" ' + band + '/><path d="M' + (cx - nw) + ' ' + (ny - 4) + ' L' + (cx - nw + 2) + ' ' + (ny + 40) + ' L' + (cx - (open ? 18 : 2)) + ' ' + (ny + (open ? 30 : 20)) + ' Z" fill="' + c + '" ' + S + '/><path d="M' + (cx + nw) + ' ' + (ny - 4) + ' L' + (cx + nw - 2) + ' ' + (ny + 40) + ' L' + (cx + (open ? 18 : 2)) + ' ' + (ny + (open ? 30 : 20)) + ' Z" fill="' + c + '" ' + S + '/>';
   if (neck === 'mao') out += '<path d="M' + (cx - nw) + ' ' + ny + ' L' + (cx - nw) + ' ' + (ny - 14) + ' Q' + cx + ' ' + (ny - 20) + ' ' + (cx + nw) + ' ' + (ny - 14) + ' L' + (cx + nw) + ' ' + ny + ' Q' + cx + ' ' + (ny + 8) + ' ' + (cx - nw) + ' ' + ny + ' Z" ' + band + '/>';
   if (neck === 'gola-alta' || neck === 'meio-fecho') { out += '<path d="M' + (cx - nw) + ' ' + ny + ' L' + (cx - nw) + ' ' + (ny - 36) + ' Q' + cx + ' ' + (ny - 44) + ' ' + (cx + nw) + ' ' + (ny - 36) + ' L' + (cx + nw) + ' ' + ny + ' Q' + cx + ' ' + (ny + 10) + ' ' + (cx - nw) + ' ' + ny + ' Z" ' + band + '/>' + ribs(cx - nw, cx + nw, ny - 34, ny - 2, shade(c, 0.6)); }
   if (neck === 'meio-fecho') out += '<path d="M' + cx + ' ' + (ny - 40) + ' L' + cx + ' ' + (ny + 84) + '" stroke="' + o + '" stroke-width="5"/><path d="M' + cx + ' ' + (ny - 36) + ' L' + cx + ' ' + (ny + 82) + '" stroke="' + shade(c2, 1.4) + '" stroke-width="1.6" stroke-dasharray="2 2"/><rect x="' + (cx - 6) + '" y="' + (ny - 28) + '" width="12" height="20" fill="#C9C9CC" stroke="' + o + '" stroke-width="2"/>';
@@ -1347,12 +1670,14 @@ function genPants(d) {
   const isShorts = d.sub === 'shorts';
   const hem = isShorts ? { curto: 196, joelho: 248 }[d.length || 'joelho'] : { comprido: 356, cropped: 318 }[d.length || 'comprido'];
   const fit = d.fit || 'reto';
-  const hw = { skinny: 24, reto: 38, largo: 48, baggy: 56, flare: 50, jogger: 30 }[fit] + (isShorts ? 10 : 0);
+  const hw = { skinny: 24, reto: 38, largo: 48, baggy: 56, flare: 50, bootcut: 41, jogger: 30 }[fit] + (isShorts ? 10 : 0);
   const L1 = cx - 10, L0 = L1 - 2 * hw;
   const crotch = Math.min(140, hem - 30);
   const S = 'stroke="' + o + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"', S3 = S.replace('"5"', '"3"');
   let D;
   if (fit === 'flare') D = 'M122 62 L278 62 Q' + (400 - L1 - 18) + ' ' + (hem - 120) + ' ' + (400 - L0) + ' ' + hem + ' L' + (400 - L1) + ' ' + hem + ' Q216 ' + (hem - 120) + ' 200 ' + crotch + ' Q184 ' + (hem - 120) + ' ' + L1 + ' ' + hem + ' L' + L0 + ' ' + hem + ' Q' + (L1 + 18) + ' ' + (hem - 120) + ' 122 62 Z';
+  else if (fit === 'bootcut') { const ky = Math.max(crotch + 30, hem - 112), ko = 119, ki = 186; // slim to the knee, then opens slightly over the shoe
+    D = 'M122 62 L278 62 C282 150 ' + (400 - ko) + ' ' + (ky - 50) + ' ' + (400 - ko) + ' ' + ky + ' Q' + (400 - ko) + ' ' + (ky + 60) + ' ' + (400 - L0) + ' ' + hem + ' L' + (400 - L1) + ' ' + hem + ' Q' + (400 - ki) + ' ' + (ky + 60) + ' ' + (400 - ki) + ' ' + ky + ' L200 ' + crotch + ' L' + ki + ' ' + ky + ' Q' + ki + ' ' + (ky + 60) + ' ' + L1 + ' ' + hem + ' L' + L0 + ' ' + hem + ' Q' + ko + ' ' + (ky + 60) + ' ' + ko + ' ' + ky + ' C' + ko + ' ' + (ky - 50) + ' 118 150 122 62 Z'; }
   else D = 'M122 62 L278 62 L' + (400 - L0) + ' ' + hem + ' L' + (400 - L1) + ' ' + hem + ' L200 ' + crotch + ' L' + L1 + ' ' + hem + ' L' + L0 + ' ' + hem + ' Z';
   let out = '<path d="' + D + '" fill="' + c + '"/>';
   out += clipWrap(D, patternInner(d.pattern === 'desbotado' ? '' : d.pattern, c, c2));
@@ -1444,7 +1769,7 @@ function genSvg(d, open) {
   if (sub === 'pants' || sub === 'shorts') return genPants(d);
   if (sub === 'shoe') return genShoe(d);
   if (sub === 'acc') return genAcc(d);
-  return genTop(d, open && sub === 'outer');
+  return genTop(d, open && sub !== 'tee');
 }
 const svgUri = (svg) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 const genCache = new Map();
@@ -1465,7 +1790,7 @@ const DOPTS = {
   shirt: { fit: FIT_TOP, bodyLength: [['normal', 'Normal'], ['curto', 'Curta'], ['longo', 'Comprida']], sleeve: [['comprida', 'Comprida'], ['tres-quartos', '3/4'], ['curta', 'Curta']], neck: [['camisa', 'Colarinho'], ['mao', 'Gola mao'], ['polo', 'Polo']], closure: [['botoes', 'Botões'], ['molas', 'Molas'], ['fecho', 'Fecho'], ['nenhum', 'Sem fecho']], cuff: [['normal', 'Punho normal'], ['contraste', 'Punho noutra cor']], pocket: [['nenhum', 'Sem bolso'], ['peito1', '1 bolso'], ['peito', '2 bolsos']], pattern: PAT_TOP, texture: [['liso', 'Liso'], ['ganga', 'Ganga'], ['bombazina', 'Bombazina'], ['pelo', 'Flanela']], stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
   sweater: { fit: FIT_TOP, bodyLength: [['normal', 'Normal'], ['curto', 'Curta (cropped)'], ['longo', 'Comprida']], shoulder: [['normal', 'Normal'], ['descaido', 'Descaído']], sleeve: [['comprida', 'Comprida'], ['tres-quartos', '3/4'], ['curta', 'Curta']], neck: [['redonda', 'Redonda'], ['v', 'Em V'], ['gola-alta', 'Gola alta'], ['meio-fecho', 'Meio-fecho'], ['capuz', 'Capuz'], ['polo', 'Polo']], cords: [['sim', 'Com cordões'], ['nao', 'Sem cordões']], hem: [['canelado', 'Bainha canelada'], ['normal', 'Bainha lisa']], cuff: [['canelado', 'Punho canelado'], ['normal', 'Punho liso'], ['contraste', 'Punho noutra cor']], pocket: [['nenhum', 'Sem bolso'], ['canguru', 'Bolso canguru']], print: PRINT, pattern: PAT_TOP, texture: TEX_TOP, stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
   outer: { fit: FIT_TOP, length: [['curto', 'Curto'], ['medio', 'Médio'], ['comprido', 'Comprido']], shoulder: [['normal', 'Normal'], ['descaido', 'Descaído']], neck: [['lapela', 'Colarinho'], ['pelo', 'Colarinho de pelo'], ['gola-alta', 'Gola alta'], ['capuz', 'Capuz'], ['mao', 'Gola mao']], cords: [['sim', 'Com cordões'], ['nao', 'Sem cordões']], closure: [['fecho', 'Fecho'], ['botoes', 'Botões'], ['molas', 'Molas'], ['nenhum', 'Sem fecho']], hem: [['normal', 'Bainha lisa'], ['elastico', 'Bainha elástica']], cuff: [['normal', 'Punho normal'], ['canelado', 'Punho elástico'], ['contraste', 'Punho noutra cor']], pocket: [['nenhum', 'Sem bolsos'], ['peito', 'No peito'], ['laterais', 'Laterais'], ['ambos', 'Peito e laterais']], texture: [['liso', 'Liso'], ['acolchoado', 'Acolchoado (puffer)'], ['losangos', 'Acolchoado em losangos'], ['bombazina', 'Bombazina'], ['ganga', 'Ganga'], ['canelado', 'Malha'], ['pelo', 'Pelo/sherpa']], pattern: PAT_TOP, print: PRINT.slice(0, 3), stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
-  pants: { fit: [['skinny', 'Skinny'], ['reto', 'Reto'], ['largo', 'Largo'], ['baggy', 'Baggy'], ['flare', 'Boca de sino'], ['jogger', 'Jogger']], length: [['comprido', 'Comprido'], ['cropped', 'Cropped']], waist: [['passadores', 'Com passadores'], ['cinto', 'Com cinto'], ['elastico', 'Elástico com cordão']], hemstyle: [['normal', 'Bainha normal'], ['dobrada', 'Bainha dobrada'], ['elastica', 'Punho elástico'], ['desfiada', 'Bainha desfiada']], pocketsP: [['normal', 'Bolsos normais'], ['cargo', 'Bolsos cargo']], wash: [['nenhuma', 'Sem lavagem'], ['desbotada', 'Desbotada'], ['muito', 'Muito desbotada']], rips: [['nao', 'Sem rasgões'], ['sim', 'Rasgões nos joelhos']], crease: [['nao', 'Sem vinco'], ['sim', 'Com vinco']], texture: [['liso', 'Liso'], ['ganga', 'Ganga'], ['bombazina', 'Bombazina'], ['canelado', 'Malha']], pattern: [['liso', 'Liso'], ['riscas-v', 'Riscas finas'], ['xadrez', 'Xadrez'], ['camuflado', 'Camuflado']], stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
+  pants: { fit: [['skinny', 'Skinny'], ['reto', 'Reto'], ['largo', 'Largo'], ['baggy', 'Baggy'], ['bootcut', 'Bootcut'], ['flare', 'Boca de sino'], ['jogger', 'Jogger']], length: [['comprido', 'Comprido'], ['cropped', 'Cropped']], waist: [['passadores', 'Com passadores'], ['cinto', 'Com cinto'], ['elastico', 'Elástico com cordão']], hemstyle: [['normal', 'Bainha normal'], ['dobrada', 'Bainha dobrada'], ['elastica', 'Punho elástico'], ['desfiada', 'Bainha desfiada']], pocketsP: [['normal', 'Bolsos normais'], ['cargo', 'Bolsos cargo']], wash: [['nenhuma', 'Sem lavagem'], ['desbotada', 'Desbotada'], ['muito', 'Muito desbotada']], rips: [['nao', 'Sem rasgões'], ['sim', 'Rasgões nos joelhos']], crease: [['nao', 'Sem vinco'], ['sim', 'Com vinco']], texture: [['liso', 'Liso'], ['ganga', 'Ganga'], ['bombazina', 'Bombazina'], ['canelado', 'Malha']], pattern: [['liso', 'Liso'], ['riscas-v', 'Riscas finas'], ['xadrez', 'Xadrez'], ['camuflado', 'Camuflado']], stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
   shorts: { fit: [['skinny', 'Justos'], ['reto', 'Retos'], ['largo', 'Largos']], length: [['curto', 'Curtos'], ['joelho', 'Até ao joelho']], waist: [['passadores', 'Com passadores'], ['cinto', 'Com cinto'], ['elastico', 'Elástico com cordão']], hemstyle: [['normal', 'Bainha normal'], ['dobrada', 'Bainha dobrada'], ['desfiada', 'Bainha desfiada']], pocketsP: [['normal', 'Bolsos normais'], ['cargo', 'Bolsos cargo']], wash: [['nenhuma', 'Sem lavagem'], ['desbotada', 'Desbotada']], texture: [['liso', 'Liso'], ['ganga', 'Ganga'], ['canelado', 'Malha']], pattern: [['liso', 'Liso'], ['riscas-v', 'Riscas'], ['xadrez', 'Xadrez'], ['camuflado', 'Camuflado']], stitch: [['nao', 'Sem costuras à vista'], ['sim', 'Costuras à vista']] },
   shoe: { type: [['sapatilha', 'Sapatilha'], ['bota', 'Bota'], ['chelsea', 'Bota chelsea'], ['sapato', 'Sapato'], ['mocassim', 'Mocassim'], ['chinelo', 'Chinelo']], height: [['baixo', 'Cano baixo'], ['alto', 'Cano alto']], stripe: [['sim', 'Risca lateral'], ['nao', 'Sem risca']], toecap: [['nao', 'Sem biqueira'], ['sim', 'Biqueira marcada']] },
   acc: { type: [['bone', 'Boné'], ['gorro', 'Gorro'], ['chapeu', 'Chapéu'], ['cachecol', 'Cachecol'], ['oculos', 'Óculos'], ['relogio', 'Relógio'], ['mala', 'Mala'], ['mochila', 'Mochila'], ['cinto', 'Cinto']], pompom: [['nao', 'Sem pompom'], ['sim', 'Com pompom']] }
@@ -1768,9 +2093,28 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.bpick) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; togglePick(t.dataset.bpick); renderSheet(); return; }
   if (t.dataset.bsave) { saveBuilder(t.dataset.bsave); return; }
   if (t.dataset.kind) { S.upKind = t.dataset.kind; S.msg = ''; render(); return; }
-  if (t.dataset.fitClose) { const v = t.dataset.closed === '1'; const f = S.fits.find((x) => x.id === t.dataset.fitClose); if (f) { f.closed = v; render(); } if (db) db.doc('fits/' + t.dataset.fitClose).update({ closed: v }).catch(() => {}); return; }
-  if (t.dataset.dayClose) { const v = t.dataset.closed === '1'; const d = S.days.find((x) => x.date === t.dataset.dayClose); if (d) { d.closed = v; render(); } if (db) db.doc('days/' + t.dataset.dayClose).update({ closed: v }).catch(() => {}); return; }
-  if (t.dataset.bClose) { S.builder.closed = t.dataset.closed === '1'; const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); return; }
+  if (t.dataset.lt) { // open / close one layer (casaco, camisola, camisa), each on its own
+    const scope = t.dataset.lt, id = t.dataset.ltId, layer = t.dataset.ltLayer, on = t.dataset.ltOpen === '1';
+    const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : S.days.find((x) => x.date === id);
+    if (!tgt) return;
+    const patch = layer === 'outer' ? { closed: !on } : { opened: (tgt.opened || []).filter((x) => x !== layer).concat(on ? [layer] : []) };
+    Object.assign(tgt, patch);
+    if (scope === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); return; }
+    render(); if (db) db.doc((scope === 'fit' ? 'fits/' : 'days/') + id).update(patch).catch(() => {});
+    return;
+  }
+  if (t.dataset.fitBase) { baseBuilder(t.dataset.fitBase); return; }
+  if (t.dataset.pset) { const p = pieceById(S.open); if (!p) return; const patch = { [t.dataset.pset]: t.dataset.pval || '' }; Object.assign(p, patch); genCache.clear(); render(); if (db) db.doc('pieces/' + p.id).update(patch).catch(() => {}); return; }
+  if (t.hasAttribute('data-show-top')) { S.showTop = true; render(); return; }
+  if (t.hasAttribute('data-wx-locate')) { pref('wxmanual', ''); if (wxLoc() && wxNow().src !== 'live') { WX.tried = 0; render(); wxFetch(); } else wxLocate(); return; }
+  if (t.dataset.wxManual) { pref('wxmanual', pref('wxmanual') === t.dataset.wxManual ? '' : t.dataset.wxManual); render(); return; }
+  if (t.dataset.propUse || t.dataset.propEdit || t.dataset.propSkip) {
+    const x = proposals().list[Number(t.dataset.propUse || t.dataset.propEdit || t.dataset.propSkip)]; if (!x) return;
+    if (t.dataset.propUse) useProposal(x);
+    else if (t.dataset.propEdit) { S.open = null; S.builder = { sel: x.ids.slice(), title: '' }; renderSheet(); }
+    else { pref('skip', JSON.stringify({ day: today(), keys: propSkips().concat(x.key) })); render(); }
+    return;
+  }
   if (t.dataset.fitfilter) { S.fitFilter = t.dataset.fitfilter; render(); return; }
   if (t.dataset.fitUse) { useFit(t.dataset.fitUse); return; }
   if (t.dataset.fitLike) { const f = S.fits.find((x) => x.id === t.dataset.fitLike); setFitStatus(t.dataset.fitLike, f && f.status === 'gosto' ? 'proposta' : 'gosto'); return; }
@@ -1780,6 +2124,7 @@ document.addEventListener('click', (ev) => {
 document.addEventListener('change', (ev) => {
   const el = ev.target;
   if (el.id === 'sort') { S.sort = el.value; pref('sort', S.sort); render(); }
+  if (el.id === 'bbase' && el.value && S.builder) baseBuilder(el.value);
 });
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
 document.getElementById('file').addEventListener('change', (e) => handleFile(e.target.files && e.target.files[0]));
