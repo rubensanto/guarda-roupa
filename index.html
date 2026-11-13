@@ -203,6 +203,10 @@ nav.tabs svg{width:24px;height:24px}
 .seg-sm{align-self:flex-start}
 .seg-sm button{min-height:36px;padding:0 12px;font-size:13px;flex:none}
 .fitview{display:flex;gap:12px;align-items:flex-start}
+.withrow{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
+.withrow button{flex:none;width:56px;height:56px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.withrow button img{width:80%;height:80%;object-fit:contain}
+.withrow button[aria-pressed="true"]{border:2px solid var(--fg)}
 .mini-col{flex-direction:column;flex-wrap:nowrap;gap:6px}
 .mini-col button{width:52px;height:52px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 .mini-col button img{width:80%;height:80%;object-fit:contain}
@@ -663,7 +667,7 @@ const SORTS = [
 ];
 
 const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
-  period: 90, fitFilter: 'all', open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
+  period: 90, fitFilter: 'all', withPiece: null, pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
 let db = null, assets = null;
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('gr-' + k); localStorage.setItem('gr-' + k, v); } catch (e) { return null; } };
 { const t = pref('tab'); if (t) S.tab = t === 'semana' ? 'fits' : t; const s = pref('sort'); if (s) S.sort = s; const p = pref('period'); if (p !== null && p !== undefined && p !== '') S.period = Number(p); }
@@ -1019,21 +1023,24 @@ function harmony(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { score, n
   return { score, notes };
 }
 let propCache = { key: '', res: null };
+// the piece I asked proposals for («fits com esta peça»), if it can be part of a fit
+function focusPiece() { const p = S.withPiece && S.pieces.find((x) => x.id === S.withPiece); return p && !p.removed && groupOf(p) !== 'acc' ? p : null; }
 function proposals() {
-  const wx = wxNow(), skips = propSkips();
-  const key = [today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  const wx = wxNow(), skips = propSkips(), focus = focusPiece(), fsub = focus ? subOf(focus) : '';
+  const key = [focus ? focus.id : '', today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
   const by = (sub) => S.pieces.filter((p) => subOf(p) === sub);
-  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = by('shoe');
-  const bottoms = S.pieces.filter((p) => groupOf(p) === 'bottom');
+  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = fsub === 'shoe' ? [focus] : by('shoe');
+  const bottoms = focus && groupOf(focus) === 'bottom' ? [focus] : S.pieces.filter((p) => groupOf(p) === 'bottom');
   const T = wx.feel, target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
   // top combinations, back → front
-  const tops = [];
+  let tops = [];
   tees.forEach((a) => tops.push([a])); shirts.forEach((a) => tops.push([a])); sweaters.forEach((a) => tops.push([a]));
   tees.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
   tees.forEach((a) => shirts.forEach((b) => { if (openKind(b) === 'full') tops.push([a, b]); }));
   shirts.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
-  const outs = T > 23 ? [null] : [null, ...outers];
+  if (focus && ['tee', 'shirt', 'sweater'].includes(fsub)) tops = tops.filter((tp) => tp.includes(focus));
+  const outs = fsub === 'outer' ? [focus] : T > 23 ? [null] : [null, ...outers];
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1081,11 +1088,12 @@ function proposals() {
   }
   const res = { wx, list: [] };
   if (cands.length) {
-    const share = (a, b) => a.ids.filter((id) => b.ids.includes(id)).length / Math.min(a.ids.length, b.ids.length);
+    const fo = focus ? 1 : 0; // the chosen piece is in every candidate, so it does not count as «repeated»
+    const share = (a, b) => (a.ids.filter((id) => b.ids.includes(id)).length - fo) / Math.max(1, Math.min(a.ids.length, b.ids.length) - fo);
     const best = (score, ok) => { let m = null, ms = -1e9; for (const c of cands) { if (res.list.some((x) => x.c === c) || (ok && !ok(c))) continue; const s = score(c); if (s > ms) { ms = s; m = c; } } return m; };
     const wxBest = Math.max(...cands.map((c) => c.wxs));
     const add = (label, c) => { if (c) res.list.push({ label, c }); };
-    add('Melhor para hoje', best((c) => c.base + c.idl * 0.01));
+    add(focus ? 'A melhor combinação' : 'Melhor para hoje', best((c) => c.base + c.idl * 0.01));
     const first = res.list[0].c;
     add('A dar uso ao que está parado', best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3 && c.hm.score >= Math.min(0.4, first.hm.score - 0.6) && share(c, first) <= 0.6)
       || best((c) => c.idl / 12 + c.base * 0.5, (c) => c.wxs >= wxBest - 1.3));
@@ -1094,6 +1102,7 @@ function proposals() {
       const c = x.c, notes = [];
       const lay = c.ps.filter((p) => WARM[subOf(p)]).length;
       notes.push(wx.rain && c.ps.some((p) => subOf(p) === 'outer') ? 'Casaco para a chuva' : lay >= 3 ? lay + ' camadas para ' + Math.round(T) + ' °C' : subOf(c.ps[c.ps.length - 2]) === 'shorts' ? 'Leve para ' + Math.round(T) + ' °C' : 'À medida de ' + Math.round(T) + ' °C');
+      if (focus && c.wxs < wxBest - 2.5 || focus && c.wxs < -3) notes[0] = 'Pouco à medida dos ' + Math.round(T) + ' °C de hoje';
       notes.push(...c.hm.notes.slice(0, 2));
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
@@ -1115,8 +1124,14 @@ function propCard(x, i) {
 function topHtml() {
   wxAuto();
   const R = proposals();
-  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="top-h">Top 3 para hoje</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
-  h += R.list.length ? R.list.map(propCard).join('') : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
+  const focus = focusPiece(), pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
+  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (focus ? 'Fits com «' + esc(focus.name) + '»' : 'Top 3 para hoje') + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
+  if (pick.length) {
+    h += '<div class="chips"><button class="chip" data-with-pick aria-pressed="' + !!(focus || S.pickPiece) + '" aria-expanded="' + !!(focus || S.pickPiece) + '">Propor com uma peça</button>' + (focus ? '<button class="chip" data-with-clear>✕ Todas as peças</button>' : '') + '</div>';
+    if (focus || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe a peça que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + (!!focus && focus.id === p.id) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
+      + (focus ? '' : '<p class="status" style="font-size:13px">Toca numa peça para ver fits que a incluem.</p>');
+  }
+  h += R.list.length ? R.list.map(propCard).join('') : focus ? '<div class="empty">Não encontrei combinações com «' + esc(focus.name) + '»: falta uma parte de cima, umas calças ou calções, ou um calçado para a acompanhar (ou já saltaste todas hoje).</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
   return h + buildBtn() + '</section>';
 }
 async function useProposal(x) {
@@ -1316,6 +1331,7 @@ function pieceSheet(p) {
     + '<div><small>Últimos 6 meses</small><strong>' + inPeriod(182) + '×</strong></div>'
     + '<div><small>Últimos 12 meses</small><strong>' + inPeriod(365) + '×</strong></div>'
     + '</div>'
+    + (groupOf(p) !== 'acc' && !p.removed ? '<button class="btn primary" data-with="' + esc(p.id) + '" data-with-go="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/></svg>Propor fits com esta peça</button>' : '')
     + pieceSetHtml(p)
     + (topPartners.length ? '<h3>Usada mais vezes com</h3><div class="pairs">' + topPartners.map(([id, n]) => { const q = pieceById(id); return '<button class="pair" data-open="' + esc(id) + '" style="border:none;background:none;padding:0;text-align:left"><span class="mini"><span><img src="' + pieceSrc(q) + '" alt=""></span></span><span>' + esc(q.name) + '</span><b>' + n + '×</b></button>'; }).join('') + '</div>' : '')
     + (p.photo ? '<button class="orig" data-view="' + esc(p.photo) + '" data-view-alt="Foto original de ' + esc(p.name) + '" style="background:none;text-align:left;width:100%"><img src="' + blob(p.photo) + '" alt="Foto original de ' + esc(p.name) + '"><div><h3>Foto original</h3><p class="status">' + esc(p.source || '') + ' · toca para ver em grande</p></div></button>' : '')
@@ -2082,6 +2098,13 @@ document.addEventListener('click', (ev) => {
   if (S.designer || S.dataSheet) return;
   const t = ev.target.closest('button'); if (!t) return;
   if (t.hasAttribute('data-data-open')) { openDataSheet(); return; }
+  if (t.dataset.with) {
+    S.withPiece = t.dataset.with; S.pickPiece = false;
+    if (t.dataset.withGo) { S.open = null; S.confirmDel = false; if (S.tab !== 'fits') { S.tab = 'fits'; pref('tab', S.tab); } render(); document.getElementById('main').scrollTop = 0; } else render();
+    return;
+  }
+  if (t.hasAttribute('data-with-clear')) { S.withPiece = null; S.pickPiece = false; render(); return; }
+  if (t.hasAttribute('data-with-pick')) { if (focusPiece()) { S.withPiece = null; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
   if (t.dataset.period !== undefined) { S.period = Number(t.dataset.period); pref('period', S.period); render(); return; }
