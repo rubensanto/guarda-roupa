@@ -203,8 +203,10 @@ nav.tabs svg{width:24px;height:24px}
 .seg-sm{align-self:flex-start}
 .seg-sm button{min-height:36px;padding:0 12px;font-size:13px;flex:none}
 .fitview{display:flex;gap:12px;align-items:flex-start}
-.usel{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted)}
-.usel select{color:var(--fg);max-width:62%}
+.usels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+.usel select{color:var(--fg);width:100%;min-width:0}
+.dress .dsock{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 .withrow{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
 .withrow button{flex:none;width:56px;height:56px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 .withrow button img{width:80%;height:80%;object-fit:contain}
@@ -695,13 +697,18 @@ function underPiece(u) {
   const d = UNDER[u]; if (!d) return undefined;
   return underCache[u] || (underCache[u] = { id: '~u:' + u, virtual: true, name: 'Camisola interior: ' + d[0].toLowerCase(), cat: 'under', color: d[2], tags: [], design: { sub: 'tee', color: d[2], sleeve: d[1], neck: 'redonda', fit: 'justo' } });
 }
-// ids to draw for a fit / day: its pieces plus, when chosen, the camisola interior
-const uids = (o, pieces) => { const ids = pieces || (o && o.pieces) || []; return o && UNDER[o.under] ? ['~u:' + o.under].concat(ids) : ids; };
-function underSel(scope, id, cur) {
-  return '<label class="usel">Camisola interior<select data-usel="' + scope + '" data-usel-id="' + esc(id) + '" aria-label="Camisola interior"><option value="">Nenhuma</option>'
-    + Object.keys(UNDER).map((k) => '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + UNDER[k][0] + '</option>').join('') + '</select></label>';
+// meias: same idea (field `socks`); drawn between the hem and the shoe, so long trousers cover them
+const SOCKS = { brancas: ['Brancas', '#F4F3EE', '#A9A8A0'], pretas: ['Pretas', '#232325', '#0C0C0D'], cinzentas: ['Cinzentas', '#9C9EA3', '#63656A'] };
+const sockPiece = (k) => SOCKS[k] ? (underCache['s' + k] || (underCache['s' + k] = { id: '~s:' + k, virtual: true, sock: k, name: 'Meias ' + SOCKS[k][0].toLowerCase(), cat: 'socks', color: SOCKS[k][1], tags: [] })) : undefined;
+// ids to draw for a fit / day: its pieces plus, when chosen, the camisola interior and the meias
+const uids = (o, pieces) => { const ids = pieces || (o && o.pieces) || []; return (o && UNDER[o.under] ? ['~u:' + o.under] : []).concat(ids, o && SOCKS[o.socks] ? ['~s:' + o.socks] : []); };
+const OPTS = { under: ['Camisola interior', UNDER], socks: ['Meias', SOCKS] };
+function optSel(scope, id, o) { // the two «not a piece» options of a fit, side by side
+  return '<div class="usels">' + Object.keys(OPTS).map((f) => { const L = OPTS[f][0], T = OPTS[f][1], cur = o && o[f];
+    return '<label class="usel">' + L + '<select data-usel="' + scope + '" data-usel-f="' + f + '" data-usel-id="' + esc(id) + '" aria-label="' + L + '"><option value="">' + (f === 'under' ? 'Nenhuma' : 'Não definir') + '</option>'
+      + Object.keys(T).map((k) => '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + T[k][0] + '</option>').join('') + '</select></label>'; }).join('') + '</div>';
 }
-const pieceById = (id) => typeof id === 'string' && id.slice(0, 3) === '~u:' ? underPiece(id.slice(3)) : S.allPieces.find((p) => p.id === id);
+const pieceById = (id) => typeof id === 'string' && id[0] === '~' ? (id.slice(0, 3) === '~u:' ? underPiece(id.slice(3)) : sockPiece(id.slice(3))) : S.allPieces.find((p) => p.id === id);
 const worn = () => S.days.filter((d) => d.worn);
 const periodStart = () => S.period ? addDays(today(), -(S.period - 1)) : '0000-00-00';
 const wearsOf = (id, since) => worn().filter((d) => (d.pieces || []).includes(id) && (!since || d.date >= since));
@@ -738,7 +745,7 @@ function viewToday() {
     const f = plan.fit && S.fits.find((x) => x.id === plan.fit);
     h += '<section class="card" aria-labelledby="fit-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="fit-h">' + esc(plan.title || 'Fit de hoje') + '</h2><button class="chip" data-edit-day="' + esc(plan.date) + '">Editar</button></div>'
       + layerToggles('day', plan.date, uids(plan), plan.closed, plan.opened)
-      + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), 220, plan.closed, plan.opened) + '</div>' + underSel('day', plan.date, plan.under)
+      + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), 220, plan.closed, plan.opened) + '</div>' + optSel('day', plan.date, plan)
       + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
       + (f ? rateHtml(f) : '') + '</section>';
   }
@@ -856,6 +863,12 @@ function dressedHtml(ids, w, closed, opened) {
   const L = [];
   const img = (p, cls, st) => '<img class="' + cls + '" src="' + pieceSrc(p) + '" alt="" style="' + st + '">';
   if (bottom) L.push(img(bottom, 'dl', 'left:9%;top:43%;width:82%;z-index:1'));
+  const sock = ps.find((p) => p.sock);
+  if (sock && shoe) { // behind the trousers and the shoes: only the stretch between hem and shoe is seen
+    const k = SOCKS[sock.sock], one = (x) => '<rect x="' + x + '" y="138" width="11" height="22" rx="2.5" fill="' + k[1] + '" stroke="' + k[2] + '" stroke-width="1"/><path d="M' + x + ' 142.5h11" stroke="' + k[2] + '" stroke-width=".6" fill="none"/>'
+      + [2.2, 4.4, 6.6, 8.8].map((d) => '<path d="M' + (x + d) + ' 138.6v3.4" stroke="' + k[2] + '" stroke-width=".45" opacity=".7"/>').join('');
+    L.push('<svg class="dsock" viewBox="0 0 100 180" aria-hidden="true">' + one(34.5) + one(54.5) + '</svg>');
+  }
   const vis = visibleTorso(ids, closed, opened);
   const half = vis.find((v) => v.open && openKind(v.p) === 'half');
   const halfSrc = half ? pieceSrc(half.p) : '';
@@ -1184,7 +1197,7 @@ function fitCard(f, compact) {
   h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 190, f.closed, f.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
   if (!compact) {
-    h += underSel('fit', f.id, f.under);
+    h += optSel('fit', f.id, f);
     const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
     if (tags.length) h += '<div class="tags">' + tags.map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>';
     if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(f.reason) + '</p>';
@@ -1383,7 +1396,7 @@ function builderHtml() {
         + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(uids(f), 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
-    + underSel('b', 'b', B.under) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
+    + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
   h += groups.map((g) => '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + g.s.label + '</h3><span class="eyebrow" style="font-size:12px">' + hint[g.s.group] + '</span></div><div class="pickrow">'
     + g.ps.map((p) => { const on = B.sel.includes(p.id); return '<button class="pick" data-bpick="' + esc(p.id) + '" aria-pressed="' + on + '"><span class="pic"><img src="' + pieceSrc(p) + '" alt=""></span><span>' + esc(p.name) + '</span></button>'; }).join('')
@@ -1400,7 +1413,7 @@ function builderHtml() {
 function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null;
-  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', baseTitle: f.title || 'Fit' };
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', baseTitle: f.title || 'Fit' };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function togglePick(id) {
@@ -1422,21 +1435,21 @@ async function saveBuilder(mode) {
   const title = (nameEl && nameEl.value.trim()) || 'O meu fit';
   const pieces = B.sel.slice().sort((a, b) => SUB_ORDER.indexOf(subOf(pieceById(a))) - SUB_ORDER.indexOf(subOf(pieceById(b))));
   try {
-    const under = UNDER[B.under] ? B.under : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened);
+    const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened);
     if (mode === 'edit') {
       const t = B.editDay, day = S.days.find((x) => x.date === t) || {};
       const f = day.fit && S.fits.find((x) => x.id === day.fit);
-      const same = f && f.pieces && f.pieces.slice().sort().join() === pieces.slice().sort().join() && (f.under || '') === under;
+      const same = f && f.pieces && f.pieces.slice().sort().join() === pieces.slice().sort().join() && (f.under || '') === under && (f.socks || '') === socks;
       let fitId = day.fit || null;
-      if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under });
-      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
+      if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks });
+      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
+      await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
       S.builder = null; renderSheet(); return;
     }
-    const ref = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, createdAt: new Date().toISOString() });
+    const ref = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, createdAt: new Date().toISOString() });
     if (mode === 'hoje') {
       const t = today();
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, under, fit: ref.id, chosenAt: new Date().toISOString() });
+      await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, under, socks, fit: ref.id, chosenAt: new Date().toISOString() });
       await ref.update({ lastUsed: t, timesUsed: 1 });
     }
     S.builder = null; renderSheet();
@@ -1512,7 +1525,7 @@ async function useFit(id) {
   const f = S.fits.find((x) => x.id === id); if (!f || !db) return;
   const t = today();
   try {
-    await db.doc('days/' + t).set({ date: t, title: f.title, pieces: f.pieces || [], reason: f.reason || '', worn: true, closed: !!f.closed, opened: f.opened || [], under: f.under || '', fit: f.id, chosenAt: new Date().toISOString() });
+    await db.doc('days/' + t).set({ date: t, title: f.title, pieces: f.pieces || [], reason: f.reason || '', worn: true, closed: !!f.closed, opened: f.opened || [], under: f.under || '', socks: f.socks || '', fit: f.id, chosenAt: new Date().toISOString() });
     await db.doc('fits/' + f.id).update({ lastUsed: t, timesUsed: (f.timesUsed || 0) + 1 });
   } catch (e) {}
 }
@@ -2135,7 +2148,7 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.open) { S.builder = null; S.confirmDel = false; S.open = t.dataset.open; renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0; return; }
   if (t.hasAttribute('data-close')) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); return; }
   if (t.hasAttribute('data-build')) { S.open = null; S.builder = { sel: [], title: '' }; renderSheet(); return; }
-  if (t.dataset.editDay) { const d = S.days.find((x) => x.date === t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', editDay: d.date }; renderSheet(); } return; }
+  if (t.dataset.editDay) { const d = S.days.find((x) => x.date === t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', socks: d.socks || '', editDay: d.date }; renderSheet(); } return; }
   if (t.hasAttribute('data-new-piece')) { openDesigner(null); return; }
   if (t.dataset.redesign) { const p = pieceById(t.dataset.redesign); if (p) openDesigner(p, (id) => { S.open = p.id; }); return; }
   if (t.hasAttribute('data-b-newpiece')) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; openDesigner(null, (id) => { if (id && S.builder) { S.builder.pendingPick = id; } }); return; }
@@ -2179,12 +2192,12 @@ document.addEventListener('change', (ev) => {
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
 document.addEventListener('change', (ev) => { // camisola interior of a fit, of a day, or of the fit being built
   const t = ev.target; if (!t || !t.dataset || !t.dataset.usel) return;
-  const scope = t.dataset.usel, id = t.dataset.uselId, under = UNDER[t.value] ? t.value : '';
+  const scope = t.dataset.usel, id = t.dataset.uselId, fld = t.dataset.uselF === 'socks' ? 'socks' : 'under', val = OPTS[fld][1][t.value] ? t.value : '';
   const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : S.days.find((x) => x.date === id);
   if (!tgt) return;
-  tgt.under = under;
+  tgt[fld] = val;
   if (scope === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); return; }
-  render(); if (db) db.doc((scope === 'fit' ? 'fits/' : 'days/') + id).update({ under }).catch(() => {});
+  render(); if (db) db.doc((scope === 'fit' ? 'fits/' : 'days/') + id).update({ [fld]: val }).catch(() => {});
 });
 document.getElementById('file').addEventListener('change', (e) => handleFile(e.target.files && e.target.files[0]));
 document.getElementById('dfile').addEventListener('change', (e) => dzLoadPhoto(e.target.files && e.target.files[0]));
