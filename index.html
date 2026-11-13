@@ -207,6 +207,28 @@ nav.tabs svg{width:24px;height:24px}
 .vhint{margin:0;text-align:center;font-size:12px;color:#9A9E9B;padding-top:8px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
+/* ---------- computador: menu lateral, conteúdo largo, janelas ao centro ---------- */
+@media (min-width:900px){
+  html,body{height:100%}
+  .app{max-width:none;flex-direction:row;height:100vh}
+  nav.tabs{order:-1;flex-direction:column;justify-content:flex-start;gap:4px;width:220px;flex:0 0 220px;border-top:none;border-right:1px solid var(--line);padding:28px 14px}
+  nav.tabs::before{content:"Guarda-Roupa";font-weight:700;font-size:18px;padding:0 12px 18px;color:var(--fg)}
+  nav.tabs button{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;min-height:46px;padding:0 12px;border-radius:12px;font-size:15px}
+  nav.tabs button:hover{background:var(--sunk)}
+  nav.tabs button[aria-current="page"]{background:var(--sunk)}
+  main{gap:22px;padding:36px 44px 48px}
+  main>*{width:100%;max-width:1160px;margin-inline:auto}
+  .stack{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px;align-items:start}
+  .stack>:not(.card){grid-column:1/-1}
+  .grid,.grid[style]{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important}
+  section.card .grid[style]{grid-template-columns:repeat(auto-fill,minmax(130px,170px))!important}
+  .sheet-wrap{justify-content:center;align-items:center;padding:32px}
+  .sheet-wrap>.scrim{position:absolute;inset:0;min-height:0}
+  .sheet{position:relative;border-radius:24px;max-height:88vh;max-width:680px;padding-bottom:24px;box-shadow:0 24px 60px -20px rgba(0,0,0,.45)}
+  .viewer{inset:0}
+  button{cursor:pointer}
+}
+@media (min-width:1400px){ .sheet{max-width:760px} }
 </style>
 </head>
 <body>
