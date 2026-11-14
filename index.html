@@ -212,6 +212,9 @@ nav.tabs svg{width:24px;height:24px}
 .sparts .sp-bar{height:5px;border-radius:3px;background:var(--line);margin:4px 0;overflow:hidden}
 .sparts .sp-bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
 .sparts p{margin:0;font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;max-width:min(92vw,420px);padding:12px 16px;border-radius:14px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.toast[hidden]{display:none}
+@media (min-width:900px){.toast{bottom:28px}}
 .usels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
 .usel select{color:var(--fg);width:100%;min-width:0}
@@ -259,6 +262,7 @@ nav.tabs svg{width:24px;height:24px}
 <body>
 <div class="app">
   <main id="main" aria-live="polite"></main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <nav class="tabs" aria-label="Secções">
     <button id="tab-hoje" data-tab="hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Hoje</button>
     <button id="tab-armario" data-tab="armario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a2 2 0 1 1 2 2c-1 0-2 .7-2 1.7V8l9 7.5c.6.5.2 1.5-.6 1.5H3.6c-.8 0-1.2-1-.6-1.5L12 8"/></svg>Armário</button>
@@ -1021,7 +1025,21 @@ function wxHtml() {
 }
 
 // ---------- daily top 3 ----------
+let toastT = 0;
+function toast(msg) { const el = document.getElementById('toast'); if (!el || !msg) return; el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 4500); }
 const fitKey = (ids) => ids.slice().sort().join('|');
+// A fit is its set of pieces: the same pieces are always the same fit (the camisola interior and the meias are
+// options of it, not another fit). When old data has more than one, the one I care about most is «the» fit.
+const fitRank = (f) => (f.status === 'rejeitada' ? 0 : 4) + (typeof f.rating === 'number' ? 2 : 0) + (f.status === 'gosto' ? 1 : 0);
+function fitOf(ids, not) {
+  const k = fitKey(ids || []); let best = null;
+  S.fits.forEach((f) => { if (f.id === not || fitKey(f.pieces || []) !== k) return;
+    if (!best || fitRank(f) > fitRank(best) || (fitRank(f) === fitRank(best) && String(f.createdAt || '') < String(best.createdAt || ''))) best = f; });
+  return best;
+}
+// the fit of a worn day: «the» fit with its pieces (or, failing that, the one it points to)
+function dayFit(d) { return fitOf(d.pieces) || (d.fit && S.fits.find((x) => x.id === d.fit)) || null; }
+const fitDays = (f) => worn().filter((d) => { const g = dayFit(d); return g && fitKey(g.pieces || []) === fitKey(f.pieces || []); });
 function propSkips() { try { const s = JSON.parse(pref('skip') || 'null'); return s && s.day === today() ? s.keys : []; } catch (e) { return []; } }
 // Índice de estilo, 0–100: quão bem fica o conjunto, só pelo que se vê. Seis variáveis com pontos fixos
 // (cores 35 · nº de cores 15 · contraste 15 · calçado 10 · padrões 10 · coerência 15). O tempo e as minhas
@@ -1121,7 +1139,7 @@ function proposals() {
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
   S.fits.forEach((f) => {
-    const ids = f.pieces || []; fitBy.set(fitKey(ids), f);
+    const ids = f.pieces || []; fitBy.set(fitKey(ids), fitOf(ids));
     if (typeof f.rating !== 'number' && f.status !== 'rejeitada') return;
     const dlt = (f.status === 'rejeitada' ? -1.5 : (f.rating - 3) / 2) * 0.08;
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]; pairW.set(k, (pairW.get(k) || 0) + dlt); }
@@ -1238,7 +1256,7 @@ function applyRating(id, r) {
 
 function fitCard(f, compact) {
   const ps = (f.pieces || []).map(pieceById).filter(Boolean);
-  const usedToday = S.days.some((d) => d.date === today() && d.fit === f.id);
+  const usedToday = S.days.some((d) => d.date === today() && d.worn && dayFit(d) === f);
   const saved = f.status === 'gosto';
   let h = '<article class="card" aria-label="' + esc(f.title) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2>' + esc(f.title) + '</h2>'
     + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : f.source === 'app' ? '<span class="badge">Proposta do dia</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</div>';
@@ -1249,7 +1267,8 @@ function fitCard(f, compact) {
     const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
     if (tags.length) h += '<div class="tags">' + tags.map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>';
     if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(f.reason) + '</p>';
-    if (f.timesUsed) h += '<p class="status" style="font-size:13px">Usado ' + f.timesUsed + '×' + (f.lastUsed ? ' · último a ' + esc(fmtShort(f.lastUsed)) : '') + '</p>';
+    const used = fitDays(f).map((d) => d.date).sort();
+    if (used.length) h += '<p class="status" style="font-size:13px">Usado ' + used.length + '×' + ' · último a ' + esc(fmtShort(used[used.length - 1])) + '</p>';
     h += rateHtml(f);
   }
   h += '<div class="row" style="flex-wrap:nowrap">'
@@ -1263,13 +1282,13 @@ function fitCard(f, compact) {
 }
 
 function activeFits() {
-  return S.fits.filter((f) => f.status !== 'rejeitada' && (f.pieces || []).every((id) => { const p = pieceById(id); return p && !p.removed; })).sort((a, b) =>
+  return S.fits.filter((f) => f.status !== 'rejeitada' && fitOf(f.pieces) === f && (f.pieces || []).every((id) => { const p = pieceById(id); return p && !p.removed; })).sort((a, b) =>
     (b.status === 'gosto') - (a.status === 'gosto') || (b.rating ?? -1) - (a.rating ?? -1) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 }
 
 function dayCard(d) {
   const ps = (d.pieces || []).map(pieceById).filter(Boolean);
-  const f = d.fit && S.fits.find((x) => x.id === d.fit);
+  const f = dayFit(d);
   return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
     + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
@@ -1487,20 +1506,40 @@ async function saveBuilder(mode) {
     if (mode === 'edit') {
       const t = B.editDay, day = S.days.find((x) => x.date === t) || {};
       const f = day.fit && S.fits.find((x) => x.id === day.fit);
-      const same = f && f.pieces && f.pieces.slice().sort().join() === pieces.slice().sort().join() && (f.under || '') === under && (f.socks || '') === socks;
+      const same = f && f.pieces && fitKey(f.pieces) === fitKey(pieces) && (f.under || '') === under && (f.socks || '') === socks;
+      const other = fitOf(pieces, f && f.id); // these pieces are already a fit: the day becomes that one
       let fitId = day.fit || null;
-      if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks });
+      if (other) {
+        fitId = other.id;
+        const patch = { closed, opened, under, socks, lastUsed: t, timesUsed: fitDays(other).filter((x) => x.date !== t).length + 1 };
+        if (f && typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
+        if (other.status !== 'gosto') patch.status = 'gosto';
+        await db.doc('fits/' + other.id).update(patch);
+        if (f && f.source === 'eu' && !S.days.some((x) => x.date !== t && x.fit === f.id)) await db.doc('fits/' + f.id).delete(); // the copy made just for this day
+      }
+      else if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks });
       else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
       await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
       S.builder = null; renderSheet(); return;
     }
-    const ref = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, createdAt: new Date().toISOString() });
-    if (mode === 'hoje') {
-      const t = today();
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, under, socks, fit: ref.id, chosenAt: new Date().toISOString() });
-      await ref.update({ lastUsed: t, timesUsed: 1 });
-    }
-    S.builder = null; renderSheet();
+    const t = today(), old = fitOf(pieces);
+    // same pieces as a fit I already have (or wore): it is that fit, so its rating and history stay together
+    const past = worn().filter((d) => d.date !== t && fitKey(d.pieces || []) === fitKey(pieces));
+    let fitId;
+    if (old) {
+      fitId = old.id;
+      const patch = { closed, opened, under, socks };
+      if (old.status !== 'gosto') patch.status = 'gosto';
+      const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
+      if (auto(old.title) && !auto(title)) patch.title = title; // a name I typed replaces an automatic one
+      await db.doc('fits/' + old.id).update(patch);
+    } else fitId = (await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, createdAt: new Date().toISOString() })).id;
+    for (const d of past) if (d.fit !== fitId) await db.doc('days/' + d.date).update({ fit: fitId });
+    const dates = past.map((d) => d.date).concat(mode === 'hoje' ? [t] : []).sort();
+    if (mode === 'hoje') await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, under, socks, fit: fitId, chosenAt: new Date().toISOString() });
+    if (dates.length) await db.doc('fits/' + fitId).update({ lastUsed: dates[dates.length - 1], timesUsed: dates.length });
+    S.builder = null; toast(old ? 'Já tinhas um fit com estas peças: «' + (old.title || 'Fit') + '». Fica tudo nesse.' : past.length ? 'Juntei-o ' + (past.length === 1 ? 'ao dia em que já o usaste' : 'aos ' + past.length + ' dias em que já o usaste') + '.' : '');
+    renderSheet(); render();
   } catch (e) {}
 }
 
