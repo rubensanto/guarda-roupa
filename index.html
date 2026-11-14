@@ -219,6 +219,16 @@ nav.tabs svg{width:24px;height:24px}
 .minsty b{color:var(--fg);font-weight:600}
 .minsty input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
 .fr-stage{position:relative;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:6px}
+.fr-hist{position:absolute;left:12px;bottom:12px;display:flex;gap:4px;background:rgba(255,255,255,.92);border:1px solid #D6D6D0;border-radius:22px;padding:3px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.fr-hist button{width:36px;height:36px;border-radius:18px;border:none;background:#F1F0EC;color:#222;font-size:18px;line-height:1}
+.fr-hist button:disabled{opacity:.35}
+.fr-lib{display:flex;flex-direction:column;gap:8px}
+.fr-libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.fr-libit{position:relative}
+.fr-libit>button:first-child{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;padding:6px;border-radius:12px;border:1px solid var(--line);background:#fff;color:#333;font-size:12px}
+.fr-libit img{width:100%;aspect-ratio:1;object-fit:contain}
+.fr-libit span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr-libdel{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--new-ink);font-size:15px;line-height:1}
 .fr-zoom{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);border:1px solid #D6D6D0;border-radius:22px;padding:3px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .fr-zoom button{width:36px;height:36px;border-radius:18px;border:none;background:#F1F0EC;color:#222;font-size:18px;line-height:1}
 .fr-zoom span{min-width:44px;text-align:center;font-size:12px;color:#444}
@@ -714,6 +724,7 @@ const SORTS = [
 const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
   period: 90, fitFilter: 'all', withPieces: [], pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
 let db = null, assets = null;
+S.elements = [];
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('gr-' + k); localStorage.setItem('gr-' + k, v); } catch (e) { return null; } };
 { const t = pref('tab'); if (t) S.tab = t === 'semana' ? 'fits' : t; const s = pref('sort'); if (s) S.sort = s; const p = pref('period'); if (p !== null && p !== undefined && p !== '') S.period = Number(p); }
 
@@ -2162,7 +2173,8 @@ async function dzSave() {
     const data = { name: Z.name.trim(), cat: d.sub, color: d.color, design: d, tags: designTags(d), photo, pair: d.sub === 'shoe' && d.type === 'chinelo', source: 'Desenhado por mim' };
     let id = Z.id;
     const old = Z.mode === 'edit' ? pieceById(id) || {} : {};
-    if (Z.useFree && Z.free && !Z.free.loading) { // my own drawing becomes the piece's icon (and the open one, for coats)
+    if (Z.useFree && Z.free && (Z.free.loading || Z.free.missing)) { Z.saving = false; Z.msg = Z.free.loading ? 'Espera que o desenho abra.' : 'O desenho desta peça ainda não está neste aparelho: não guardei para não o estragar.'; renderSheet(true); return; }
+    if (Z.useFree && Z.free) { // my own drawing becomes the piece's icon (and the open one, for coats)
       const svgUp = async (inner) => (await assets.upload(new Blob([frSvg(inner)], { type: 'image/svg+xml' }), { type: 'image/svg+xml' })).id;
       data.icon = await svgUp(Z.free.src.closed);
       data.openIcon = d.sub === 'outer' ? await svgUp(Z.free.src.open || Z.free.src.closed) : '';
@@ -2182,7 +2194,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'dz-canvas') { dzSample(ev); return; }
   const t = ev.target.closest('button'); if (!t) return;
   const keepName = () => { const n = document.getElementById('dz-name'); if (n) Z.name = n.value; };
-  if (t.hasAttribute('data-dz-cancel')) { const after = Z.afterSave; S.designer = null; if (after) after(null); renderSheet(true); return; }
+  if (t.hasAttribute('data-dz-cancel')) { if (!dzMayClose()) return; const after = Z.afterSave; S.designer = null; if (after) after(null); renderSheet(true); return; }
   if (t.dataset.dzMode) { keepName(); Z.useFree = t.dataset.dzMode === 'free'; if (Z.useFree && !Z.free) frInit(Z); renderSheet(true); return; }
   if (t.dataset.dzSub) {
     keepName(); Z.d = designDefaults(t.dataset.dzSub, Z.d);
@@ -2216,9 +2228,12 @@ document.addEventListener('change', (ev) => {
 });
 
 // ---------- desenho livre: liberdade total sobre o SVG da peça ----------
-// The drawing is kept as the inner markup of a 400×400 SVG (F.src.closed / F.src.open for coats). Tools act on
-// the live <svg id="fr-svg">; every finished action is serialized back (frCommit) so undo/redo is a string stack.
-const FR_SKIP = new Set(['defs', 'clipPath', 'clippath', 'linearGradient', 'lineargradient', 'radialGradient', 'radialgradient', 'mask', 'pattern', 'style', 'title', 'desc', 'metadata', 'filter']);
+// The drawing is the inner markup of a 400×400 SVG (F.src.closed / F.src.open for coats). Tools act on the live
+// <svg id="fr-svg">; each finished action is serialized back (frCommit), so undo/redo is a stack of strings.
+// Only the editor block (#fr-wrap) is redrawn on each action (frRender), never the whole sheet.
+// Geometry is always done in the right coordinate space: moves in the parent's space, resizing in the part's own
+// space (so rotated parts and parts inside transformed groups behave), all derived from getCTM().
+const FR_SKIP = new Set(['defs', 'clipPath', 'clippath', 'linearGradient', 'lineargradient', 'radialGradient', 'radialgradient', 'mask', 'pattern', 'style', 'title', 'desc', 'metadata', 'filter', 'symbol']);
 const FR_TOOLS = [['select', 'Selecionar'], ['pen', 'Lápis'], ['poly', 'Por pontos'], ['line', 'Linha'], ['rect', 'Retângulo'], ['ellipse', 'Elipse'], ['text', 'Texto'], ['bucket', 'Balde'], ['pan', 'Mover vista']];
 const frXS = (n) => new XMLSerializer().serializeToString(n).replace(/ xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, '');
 function frParse(svgText) {
@@ -2232,35 +2247,50 @@ function frParse(svgText) {
   } catch (e) { return ''; }
 }
 const frSvg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400">' + inner + '</svg>';
+const frR = (n) => Math.round(n * 100) / 100;
 function frInit(Z) {
-  const F = Z.free = { keepRatio: true, snap: false, corner: false, view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
+  const F = Z.free = { keepRatio: true, snap: false, corner: false, penClosed: false, palStroke: false, multiOn: false, multi: [], libOpen: false, view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true, missing: false };
   const p = Z.mode === 'edit' && pieceById(Z.id);
-  const fromIcon = async (id) => { const u = id && blob(id); if (!u) return ''; try { return frParse(await (await fetch(u)).text()); } catch (e) { return ''; } };
+  // the piece's own drawing may still be downloading: wait for it rather than silently starting from the model
+  const fromIcon = async (id) => { for (let i = 0; i < 40; i++) { const u = id && blob(id); if (u) { try { return frParse(await (await fetch(u)).text()); } catch (e) { return ''; } } await new Promise((r) => setTimeout(r, 250)); } return null; };
   (async () => {
-    let a = p && p.icon ? await fromIcon(p.icon) : '';
-    if (!a) a = frParse(genSvg(Z.d, false));
-    let b = '';
+    let a = '', b = '';
+    if (p && p.icon) { a = await fromIcon(p.icon); if (a === null) { F.missing = true; a = ''; } }
+    if (!a && !F.missing) a = frParse(genSvg(Z.d, false));
     if (Z.d.sub === 'outer') { b = p && p.openIcon ? await fromIcon(p.openIcon) : ''; if (!b) b = p && p.icon ? a : frParse(genSvg(Z.d, true)); }
-    F.src = { closed: a, open: b }; F.loading = false;
+    F.src = { closed: a, open: b || '' }; F.loading = false;
     if (S.designer === Z) renderSheet(true);
   })();
 }
-function frItems() { const r = document.getElementById('fr-root'); return r ? Array.from(r.children).filter((n) => !FR_SKIP.has(n.nodeName)) : []; }
-function frPathOf(el) { const r = document.getElementById('fr-root'), path = []; while (el && el !== r) { path.unshift(Array.prototype.indexOf.call(el.parentNode.children, el)); el = el.parentNode; } return el === r ? path : null; }
-function frGet(path) { let el = document.getElementById('fr-root'); if (!el || !path) return null; for (const i of path) { el = el && el.children[i]; } return el || null; }
-function frPt(ev) { const svg = document.getElementById('fr-svg'), m = svg && svg.getScreenCTM(); if (!m) return { x: 0, y: 0 }; const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const q = p.matrixTransform(m.inverse()); return { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 }; }
-function frBox(el) {
-  const svg = document.getElementById('fr-svg'), m = svg.getScreenCTM().inverse(), r = el.getBoundingClientRect(), p = svg.createSVGPoint();
-  p.x = r.left; p.y = r.top; const a = p.matrixTransform(m); p.x = r.right; p.y = r.bottom; const b = p.matrixTransform(m);
-  return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+// ---- DOM helpers ----
+const frRoot = () => document.getElementById('fr-root');
+function frItems() { const r = frRoot(); return r ? Array.from(r.children).filter((n) => !FR_SKIP.has(n.nodeName)) : []; }
+function frPathOf(el) { const r = frRoot(), path = []; while (el && el !== r) { if (!el.parentNode) return null; path.unshift(Array.prototype.indexOf.call(el.parentNode.children, el)); el = el.parentNode; } return el === r ? path : null; }
+function frGet(path) { let el = frRoot(); if (!el || !path) return null; for (const i of path) { el = el && el.children[i]; } return el || null; }
+const frM = (el) => frRoot().getCTM().inverse().multiply(el.getCTM()); // el's own space → drawing space
+const frMP = (el) => frM(el.parentNode);                               // el's parent space → drawing space
+const frApply = (m, p) => { const q = new DOMPoint(p.x, p.y).matrixTransform(m); return { x: q.x, y: q.y }; };
+function frPt(ev) { const svg = document.getElementById('fr-svg'), m = svg && svg.getScreenCTM(); if (!m) return { x: 0, y: 0 }; const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse()); return { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 }; }
+function frBox(el) { // axis-aligned box in drawing space
+  try { const b = el.getBBox(), m = frM(el), c = [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]].map(([x, y]) => frApply(m, { x, y }));
+    const xs = c.map((p) => p.x), ys = c.map((p) => p.y), x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y; return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 }; }
+  catch (e) { return { x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 }; }
 }
-function frSerialize() { const r = document.getElementById('fr-root'); return r ? Array.from(r.childNodes).map((n) => (n.nodeType === 1 ? frXS(n) : '')).join('') : ''; }
-function frSnap() { const F = S.designer.free; F.hist.push(F.view + '\u0000' + F.src[F.view]); if (F.hist.length > 80) F.hist.shift(); F.fut = []; }
-function frCommit(rerender) { const F = S.designer.free; F.src[F.view] = frSerialize(); if (rerender !== false) renderSheet(true); }
+function frSerialize() { const r = frRoot(); return r ? Array.from(r.childNodes).map((n) => (n.nodeType === 1 ? frXS(n) : '')).join('') : ''; }
+function frSnap() { const F = S.designer.free; F.hist.push(F.view + '\u0000' + F.src[F.view]); if (F.hist.length > 120) F.hist.shift(); F.fut = []; Z_dirty(); }
+const Z_dirty = () => { if (S.designer) S.designer.dirty = true; };
+function frCommit() { const F = S.designer.free; F.src[F.view] = frSerialize(); frRender(); }
 function frPre(el, t) { el.setAttribute('transform', (t + ' ' + (el.getAttribute('transform') || '')).trim()); }
-function frAttr(F) { return 'fill="' + (F.noFill ? 'none' : F.fill) + '" stroke="' + (F.noStroke ? 'none' : F.stroke) + '" stroke-width="' + F.sw + '" stroke-linecap="round" stroke-linejoin="round"'; }
-function frAdd(markup) { const r = document.getElementById('fr-root'); frSnap(); r.insertAdjacentHTML('beforeend', '<svg xmlns="http://www.w3.org/2000/svg">' + markup + '</svg>'); const tmp = r.lastElementChild, el = tmp.firstElementChild; r.replaceChild(el, tmp); S.designer.free.sel = frPathOf(el); frCommit(); }
-function frSmooth(pts, close) { // points → smooth path (quadratic through midpoints, or Catmull-Rom for few points)
+function frPost(el, t) { el.setAttribute('transform', ((el.getAttribute('transform') || '') + ' ' + t).trim()); }
+function frParentVec(el, a, b) { const m = frMP(el).inverse(), p = frApply(m, a), q = frApply(m, b); return { x: q.x - p.x, y: q.y - p.y }; }
+function frAttr(F, open) { return 'fill="' + (F.noFill || open ? 'none' : F.fill) + '" stroke="' + (F.noStroke ? 'none' : F.stroke) + '" stroke-width="' + F.sw + '" stroke-linecap="round" stroke-linejoin="round"'; }
+function frAdd(markup, keepTool) {
+  const r = frRoot(); frSnap(); r.insertAdjacentHTML('beforeend', '<svg xmlns="http://www.w3.org/2000/svg">' + markup + '</svg>');
+  const tmp = r.lastElementChild, els = Array.from(tmp.childNodes); els.forEach((n) => r.insertBefore(n, tmp)); r.removeChild(tmp);
+  const el = els.filter((n) => n.nodeType === 1 && !FR_SKIP.has(n.nodeName)).pop(); const F = S.designer.free;
+  F.sel = el ? frPathOf(el) : null; F.multi = []; if (!keepTool && el) F.tool = 'select'; frCommit();
+}
+function frSmooth(pts, close) { // Catmull-Rom through the points; «bicos» (c) keep a sharp tip
   if (pts.length < 2) return '';
   const f = (n) => Math.round(n * 10) / 10;
   if (pts.length < 3) return 'M' + f(pts[0].x) + ' ' + f(pts[0].y) + ' L' + f(pts[1].x) + ' ' + f(pts[1].y) + (close ? ' Z' : '');
@@ -2268,266 +2298,378 @@ function frSmooth(pts, close) { // points → smooth path (quadratic through mid
   let d = 'M' + f(pts[0].x) + ' ' + f(pts[0].y);
   for (let i = 1; i < P.length - 2; i++) {
     const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2];
-    if (p1.c && p2.c) { d += ' L' + f(p2.x) + ' ' + f(p2.y); continue; } // two «bicos»: straight edge
+    if (p1.c && p2.c) { d += ' L' + f(p2.x) + ' ' + f(p2.y); continue; }
     const a = p1.c ? p1 : { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }, b = p2.c ? p2 : { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
     d += ' C' + f(a.x) + ' ' + f(a.y) + ' ' + f(b.x) + ' ' + f(b.y) + ' ' + f(p2.x) + ' ' + f(p2.y);
   }
   return d + (close ? ' Z' : '');
 }
 function frSimplify(pts, tol) { const out = [pts[0]]; for (const p of pts) { const q = out[out.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) >= tol) out.push(p); } if (out[out.length - 1] !== pts[pts.length - 1]) out.push(pts[pts.length - 1]); return out; }
-function frColors() { // the colours already in the drawing, for quick reuse
-  const s = (S.designer.free.src[S.designer.free.view] || '').match(/#[0-9a-fA-F]{6}\b/g) || [];
-  const n = new Map(); s.forEach((c) => { c = c.toUpperCase(); n.set(c, (n.get(c) || 0) + 1); });
-  return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map((x) => x[0]);
+function frColors() { const s = (S.designer.free.src[S.designer.free.view] || '').match(/#[0-9a-fA-F]{6}\b/g) || []; const n = new Map(); s.forEach((c) => { c = c.toUpperCase(); n.set(c, (n.get(c) || 0) + 1); }); return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map((x) => x[0]); }
+function frSelected() { const F = S.designer.free; return (F.multi.length ? F.multi : F.sel ? [F.sel] : []).map(frGet).filter(Boolean); }
+function frSetSel(els) { const F = S.designer.free; const ps = els.map(frPathOf).filter(Boolean); if (F.multiOn) { F.multi = ps; F.sel = ps.length ? ps[ps.length - 1] : null; } else { F.multi = []; F.sel = ps[0] || null; } }
+function frUniqIds(markup) { // a saved element brought in twice must not share ids (clip paths…)
+  const sfx = '-' + Math.random().toString(36).slice(2, 7), ids = new Set(); markup.replace(/\bid="([^"]+)"/g, (m, id) => { ids.add(id); return m; });
+  ids.forEach((id) => { const e = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); markup = markup.replace(new RegExp('\\bid="' + e + '"', 'g'), 'id="' + id + sfx + '"').replace(new RegExp('url\\(#' + e + '\\)', 'g'), 'url(#' + id + sfx + ')').replace(new RegExp('href="#' + e + '"', 'g'), 'href="#' + id + sfx + '"'); });
+  return markup;
 }
-function frHtml(Z) {
-  const F = Z.free, vw = 400 / F.zoom, vx = Math.max(0, Math.min(400 - vw, F.cx - vw / 2)), vy = Math.max(0, Math.min(400 - vw, F.cy - vw / 2));
+// ---- view ----
+function frClampView(F) { const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); }
+function frHtml(Z) { return '<div id="fr-wrap" class="fr stack" style="gap:10px">' + frInner(Z) + '</div>'; }
+function frRender() {
+  const Z = S.designer, w = document.getElementById('fr-wrap'); if (!Z || !Z.free) return;
+  if (!w) { renderSheet(true); return; }
+  w.innerHTML = frInner(Z); frMount();
+}
+function frInner(Z) {
+  const F = Z.free; frClampView(F);
   if (F.loading) return '<p class="status">A abrir o desenho…</p>';
+  if (F.missing) return '<p class="status err">O desenho desta peça ainda não chegou a este aparelho. Espera que sincronize (ou abre a app com internet) e volta a abrir o editor. Até lá não dá para guardar no Desenho livre, para não estragar o desenho.</p>';
+  const vw = 400 / F.zoom, vx = F.cx - vw / 2, vy = F.cy - vw / 2;
   const under = F.under ? (Z.photo && Z.photo.clean ? (Z.photo.url || (Z.photo.url = (() => { const c = document.createElement('canvas'); c.width = Z.photo.clean.width; c.height = Z.photo.clean.height; c.getContext('2d').putImageData(Z.photo.clean, 0, 0); return c.toDataURL('image/jpeg', 0.8); })())) : Z.keepPhoto ? blob(Z.keepPhoto) : '') : '';
   const btn = (attr, label, on, extra) => '<button class="chip" ' + attr + (on !== undefined ? ' aria-pressed="' + !!on + '"' : '') + (extra || '') + '>' + label + '</button>';
-  let h = '<div class="fr stack" style="gap:10px">';
-  if (Z.d.sub === 'outer') h += '<div class="chips">' + btn('data-fr-view="closed"', 'Casaco fechado', F.view === 'closed') + btn('data-fr-view="open"', 'Casaco aberto', F.view === 'open') + '</div>';
+  let h = '';
+  if (Z.d.sub === 'outer') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-view="closed"', 'Casaco fechado', F.view === 'closed') + btn('data-fr-view="open"', 'Casaco aberto', F.view === 'open') + (F.view === 'open' ? btn('data-fr-copyclosed', 'Copiar o fechado para aqui') : '') + '</div>';
   h += '<div class="fr-stage"><svg id="fr-svg" viewBox="' + vx + ' ' + vy + ' ' + vw + ' ' + vw + '" xmlns="http://www.w3.org/2000/svg" class="fr-svg tool-' + F.tool + '">'
-    + '<rect x="0" y="0" width="400" height="400" fill="#FFFFFF" data-fr-bg="1"/>'
+    + '<rect x="-400" y="-400" width="1200" height="1200" fill="#FFFFFF" data-fr-bg="1"/>'
     + (under ? '<image href="' + esc(under) + '" x="0" y="0" width="400" height="400" preserveAspectRatio="xMidYMid meet" opacity="' + F.uop / 100 + '" pointer-events="none"/>' : '')
     + '<g id="fr-root"' + (under ? ' opacity="' + (1 - F.uop / 200) + '"' : '') + '>' + F.src[F.view] + '</g><g id="fr-ui" pointer-events="none"></g></svg>'
-    + '<div class="fr-zoom"><button data-fr-zoom="out" aria-label="Diminuir zoom">−</button><span id="fr-zl">' + Math.round(F.zoom * 100) + '%</span><button data-fr-zoom="in" aria-label="Aumentar zoom">+</button><button data-fr-zoom="1" aria-label="Ver tudo">⤢</button></div></div>';
+    + '<div class="fr-zoom"><button data-fr-zoom="out" aria-label="Diminuir zoom">−</button><span id="fr-zl">' + Math.round(F.zoom * 100) + '%</span><button data-fr-zoom="in" aria-label="Aumentar zoom">+</button><button data-fr-zoom="1" aria-label="Ver tudo">⤢</button></div>'
+    + '<div class="fr-hist"><button data-fr-undo aria-label="Anular"' + (F.hist.length ? '' : ' disabled') + '>↶</button><button data-fr-redo aria-label="Refazer"' + (F.fut.length ? '' : ' disabled') + '>↷</button></div></div>';
   h += '<div class="chips fr-tools" style="flex-wrap:wrap">' + FR_TOOLS.map(([k, l]) => btn('data-fr-tool="' + k + '"', l, F.tool === k)).join('') + '</div>';
-  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover. Puxa os quadrados da moldura para mudar o tamanho (cantos: tudo; lados: só largura ou altura) e o círculo de cima para rodar.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos. Toca num ponto para o trocar entre curva (●) e bico (■); arrasta-o para o mover. No fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
+  const tip = { select: F.multiOn ? 'Toca nas partes para as juntar ou tirar da seleção. Arrasta uma delas para mover todas.' : 'Toca numa parte para a escolher e arrasta-a para a mover. Quadrados da moldura: cantos mudam o tamanho, lados só largura ou altura; círculo de cima roda.', pen: 'Desenha à mão livre; o traço fica suavizado.', poly: 'Toca para pôr pontos. Toca num ponto para o trocar entre curva (●) e bico (■); arrasta-o para o mover. Tocar no primeiro ponto fecha a forma.', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (as linhas ficam com a cor no contorno).', pan: 'Arrasta para mover a vista. Também dá com dois dedos em qualquer ferramenta.' };
   h += '<p class="status" style="font-size:13px;margin:0">' + tip[F.tool] + '</p>';
-  if (F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="corner"', 'Próximos pontos em bico', F.corner) + btn('data-fr-polyundo', 'Apagar último ponto', undefined, F.pts && F.pts.length ? '' : ' disabled') + '</div>'
+  if (F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="corner"', 'Próximos pontos em bico', F.corner) + btn('data-fr-toggle="closed"', 'Forma fechada e pintada', F.closed) + btn('data-fr-toggle="smooth"', 'Curvas suaves', F.smooth) + btn('data-fr-polyundo', 'Apagar último ponto', undefined, F.pts && F.pts.length ? '' : ' disabled') + '</div>'
     + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fr-polycancel' + (F.pts && F.pts.length ? '' : ' disabled') + '>Cancelar</button><button class="btn primary" data-fr-polydone' + (F.pts && F.pts.length >= 2 ? '' : ' disabled') + '>' + (F.editing ? 'Guardar pontos' : 'Concluir forma') + ' (' + (F.pts ? F.pts.length : 0) + ')</button></div>';
-  if (F.tool === 'text') h += '<div class="row" style="flex-wrap:nowrap"><input id="fr-text" type="text" placeholder="Texto" value="' + esc(F.text) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-fs" min="6" max="200" value="' + F.fs + '"></label></div>';
-  if (F.tool === 'pen' || F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="closed"', 'Fechar e pintar a forma', F.closed) + (F.tool === 'poly' ? btn('data-fr-toggle="smooth"', 'Curvas suaves', F.smooth) : '') + '</div>';
-  if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="deep"', 'Escolher partes dentro de grupos', F.deep) + btn('data-fr-toggle="keepRatio"', 'Cantos mantêm as proporções', F.keepRatio) + btn('data-fr-toggle="snap"', 'Rodar de 15 em 15°', F.snap) + '</div>';
-  // colours
-  const pal = frColors();
+  if (F.tool === 'pen') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="penClosed"', 'Fechar e pintar o traço', F.penClosed) + '</div>';
+  if (F.tool === 'text') h += '<div class="row" style="flex-wrap:nowrap"><input id="fr-text" type="text" placeholder="Texto" value="' + esc(F.text) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-fs" min="4" max="200" value="' + F.fs + '"></label></div>';
+  if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="multiOn"', 'Escolher várias', F.multiOn) + btn('data-fr-toggle="deep"', 'Partes dentro de grupos', F.deep) + btn('data-fr-toggle="keepRatio"', 'Cantos com proporções', F.keepRatio) + btn('data-fr-toggle="snap"', 'Rodar de 15 em 15°', F.snap) + '</div>';
+  // colours: with something chosen they go straight to it
+  const pal = frColors(), sels = frSelectedSafe();
   h += '<div class="fr-colors"><label>Preenchimento<input type="color" id="fr-fill" value="' + F.fill + '"></label>' + btn('data-fr-toggle="noFill"', 'Sem preenchimento', F.noFill)
     + '<label>Contorno<input type="color" id="fr-stroke" value="' + F.stroke + '"></label>' + btn('data-fr-toggle="noStroke"', 'Sem contorno', F.noStroke)
     + '<label class="fr-sw">Espessura <b>' + F.sw + '</b><input type="range" id="fr-sw" min="0" max="24" step="0.5" value="' + F.sw + '"></label></div>';
-  if (pal.length) h += '<div class="swrow">' + pal.map((c) => '<button class="sw" data-fr-pal="' + c + '" aria-label="Usar ' + c + '" style="background:' + c + '"></button>').join('') + '</div><p class="status" style="font-size:12px;margin:-4px 0 0">Cores do desenho: toca para a usar no preenchimento (toque longo: contorno).</p>';
+  if (sels.length) h += '<p class="status" style="font-size:12px;margin:-4px 0 0">Com ' + (sels.length > 1 ? sels.length + ' partes escolhidas' : 'uma parte escolhida') + ', as cores, «sem preenchimento/contorno» e a espessura aplicam-se logo a ela' + (sels.length > 1 ? 's' : '') + '.</p>';
+  if (pal.length) h += '<div class="swrow">' + pal.map((c) => '<button class="sw" data-fr-pal="' + c + '" aria-label="Usar ' + c + '" style="background:' + c + '"></button>').join('') + '</div><div class="chips">' + btn('data-fr-toggle="palStroke"', F.palStroke ? 'Cores do desenho → contorno' : 'Cores do desenho → preenchimento', F.palStroke) + '</div>';
   // selection
-  if (F.sel) {
-    h += '<div class="fr-selbar"><b>Parte escolhida</b><div class="chips" style="flex-wrap:wrap">'
-      + btn('data-fr-act="prev"', '◀ Anterior') + btn('data-fr-act="next"', 'Seguinte ▶') + btn('data-fr-act="fill"', 'Pintar preenchimento') + btn('data-fr-act="stroke"', 'Pintar contorno') + btn('data-fr-act="width"', 'Usar esta espessura') + btn('data-fr-act="copy"', 'Copiar as cores dela')
-      + btn('data-fr-act="front"', 'Para a frente') + btn('data-fr-act="back"', 'Para trás') + btn('data-fr-act="dup"', 'Duplicar') + btn('data-fr-act="flip"', 'Espelhar') + btn('data-fr-act="flipv"', 'Virar ao contrário')
-      + btn('data-fr-act="rotl"', '↺ 15°') + btn('data-fr-act="rotr"', '↻ 15°') + btn('data-fr-act="big"', 'Maior') + btn('data-fr-act="small"', 'Menor')
-      + btn('data-fr-act="wide"', 'Mais larga') + btn('data-fr-act="narrow"', 'Mais estreita') + btn('data-fr-act="tall"', 'Mais alta') + btn('data-fr-act="short"', 'Mais baixa')
-      + (frGet(F.sel) && frGet(F.sel).getAttribute && frGet(F.sel).getAttribute('data-pts') ? btn('data-fr-act="editpts"', 'Editar pontos') : '')
-      + btn('data-fr-act="ungroup"', 'Desagrupar') + btn('data-fr-act="del"', 'Apagar', undefined, ' style="color:var(--new-ink)"')
-      + '</div><div class="fr-nudge">' + btn('data-fr-act="l"', '←') + btn('data-fr-act="u"', '↑') + btn('data-fr-act="d"', '↓') + btn('data-fr-act="r"', '→') + '<button class="chip" data-fr-act="none">Largar seleção</button></div></div>';
+  if (sels.length > 1) {
+    h += '<div class="fr-selbar"><b>' + sels.length + ' partes escolhidas</b><div class="chips" style="flex-wrap:wrap">' + btn('data-fr-act="group"', 'Agrupar') + btn('data-fr-act="dup"', 'Duplicar') + btn('data-fr-act="front"', 'Para a frente') + btn('data-fr-act="back"', 'Para trás') + btn('data-fr-act="saveel"', '★ Guardar como elemento') + btn('data-fr-act="del"', 'Apagar', undefined, ' style="color:var(--new-ink)"') + '<button class="chip" data-fr-act="none">Largar</button></div></div>';
+  } else if (sels.length === 1) {
+    const el = sels[0], isText = el.nodeName === 'text';
+    h += '<div class="fr-selbar"><b>Parte escolhida</b>'
+      + (isText ? '<div class="row" style="flex-wrap:nowrap"><input id="fr-edittext" type="text" value="' + esc(el.textContent) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-editfs" min="4" max="200" value="' + esc(el.getAttribute('font-size') || '34') + '"></label></div>' : '')
+      + '<div class="chips" style="flex-wrap:wrap">'
+      + btn('data-fr-act="prev"', '◀') + btn('data-fr-act="next"', '▶') + btn('data-fr-act="front"', 'Para a frente') + btn('data-fr-act="back"', 'Para trás') + btn('data-fr-act="dup"', 'Duplicar') + btn('data-fr-act="flip"', 'Espelhar') + btn('data-fr-act="flipv"', 'Virar')
+      + btn('data-fr-act="copy"', 'Copiar as cores dela') + (el.getAttribute('data-pts') ? btn('data-fr-act="editpts"', 'Editar pontos') : '') + (el.nodeName === 'g' ? btn('data-fr-act="ungroup"', 'Desagrupar') : '')
+      + btn('data-fr-act="saveel"', '★ Guardar como elemento') + btn('data-fr-act="del"', 'Apagar', undefined, ' style="color:var(--new-ink)"')
+      + '</div><div class="fr-nudge">' + btn('data-fr-act="l"', '←') + btn('data-fr-act="u"', '↑') + btn('data-fr-act="d"', '↓') + btn('data-fr-act="r"', '→') + btn('data-fr-act="small"', '−') + btn('data-fr-act="big"', '+') + btn('data-fr-act="rotl"', '↺') + btn('data-fr-act="rotr"', '↻') + '<button class="chip" data-fr-act="none">Largar</button></div></div>';
   } else h += '<div class="chips">' + btn('data-fr-act="next"', 'Escolher a primeira parte') + '</div>';
-  // view + history
-  h += '<p class="status" style="font-size:12px;margin:0">Zoom: dois dedos no desenho (ou a roda do rato), ou os botões no canto. Com zoom, «Mover vista» ou dois dedos para andar.</p>';
-  h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-undo', 'Anular', undefined, F.hist.length ? '' : ' disabled') + btn('data-fr-redo', 'Refazer', undefined, F.fut.length ? '' : ' disabled') + '</div>';
+  // my saved elements
+  const els = (S.elements || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  h += '<div class="fr-lib"><button class="chip" data-fr-toggle="libOpen" aria-expanded="' + F.libOpen + '">★ Os meus elementos (' + els.length + ') ' + (F.libOpen ? '▴' : '▾') + '</button>';
+  if (F.libOpen) h += els.length ? '<div class="fr-libgrid">' + els.map((e) => '<div class="fr-libit"><button data-fr-ins="' + esc(e.id) + '" title="' + esc(e.name || '') + '"><img src="' + svgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (-0.06 * e.w) + ' ' + (-0.06 * e.h) + ' ' + 1.12 * e.w + ' ' + 1.12 * e.h + '">' + e.svg + '</svg>') + '" alt=""><span>' + esc(e.name || 'Elemento') + '</span></button><button class="fr-libdel" data-fr-eldel="' + esc(e.id) + '" aria-label="Apagar ' + esc(e.name || '') + '">×</button></div>').join('') + '</div><p class="status" style="font-size:12px;margin:0">Toca num elemento para o pôr no desenho (aparece ao centro da vista; depois ajusta com as pegas).</p>'
+    : '<p class="status" style="font-size:13px;margin:0">Ainda não guardaste nenhum. Escolhe uma parte (ou várias) e carrega em «★ Guardar como elemento».</p>';
+  h += '</div>';
+  h += '<p class="status" style="font-size:12px;margin:0">Zoom: dois dedos no desenho, a roda do rato ou os botões no canto.</p>';
   h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="under"', 'Ver a foto por baixo (para decalcar)', F.under, Z.photo || Z.keepPhoto ? '' : ' disabled') + btn('data-fr-reset', 'Recomeçar do modelo da categoria') + btn('data-fr-clear', 'Limpar tudo') + '</div>';
   if (F.under) h += '<label class="field" for="fr-uop">Transparência da foto<input id="fr-uop" type="range" min="10" max="90" step="5" value="' + F.uop + '"></label>';
-  return h + '</div>';
-}
-function frHandles(b, zoom, withHandles) { // selection frame; in «Selecionar» also the resize/rotate handles
-  const k = zoom, x0 = b.x - 3 / k, y0 = b.y - 3 / k, x1 = b.x + b.w + 3 / k, y1 = b.y + b.h + 3 / k, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-  let h = '<rect x="' + x0 + '" y="' + y0 + '" width="' + (x1 - x0) + '" height="' + (y1 - y0) + '" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>';
-  if (!withHandles) return h;
-  const s = 5.5 / k, hit = 15 / k, ry = y0 - 26 / k;
-  const P = { nw: [x0, y0], n: [mx, y0], ne: [x1, y0], e: [x1, my], se: [x1, y1], s: [mx, y1], sw: [x0, y1], w: [x0, my] };
-  h += '<path d="M' + mx + ' ' + y0 + ' L' + mx + ' ' + ry + '" stroke="#1E88E5" stroke-width="' + 1.5 / k + '"/>';
-  Object.keys(P).forEach((n) => { const [x, y] = P[n]; h += '<rect x="' + (x - s) + '" y="' + (y - s) + '" width="' + 2 * s + '" height="' + 2 * s + '" fill="#fff" stroke="#1E88E5" stroke-width="' + 1.6 / k + '"/><circle cx="' + x + '" cy="' + y + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="' + n + '" style="cursor:' + n + '-resize"/>'; });
-  h += '<circle cx="' + mx + '" cy="' + ry + '" r="' + 6.5 / k + '" fill="#1E88E5" stroke="#fff" stroke-width="' + 1.6 / k + '"/><circle cx="' + mx + '" cy="' + ry + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="rot" style="cursor:grab"/>';
   return h;
+}
+function frSelectedSafe() { try { return frRoot() ? frSelected() : []; } catch (e) { return []; } }
+// ---- overlay: selection frame (rotates with the part) and handles ----
+function frFrame(el, zoom, handles) {
+  let b; try { b = el.getBBox(); } catch (e) { return ''; }
+  const m = frM(el), k = zoom, pad = 3 / k, L = (x, y) => frApply(m, { x, y });
+  const x0 = b.x, y0 = b.y, x1 = b.x + b.width, y1 = b.y + b.height, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  const P = { nw: L(x0, y0), n: L(mx, y0), ne: L(x1, y0), e: L(x1, my), se: L(x1, y1), s: L(mx, y1), sw: L(x0, y1), w: L(x0, my) };
+  const C = L(mx, my), q = [P.nw, P.ne, P.se, P.sw].map((p) => { const dx = p.x - C.x, dy = p.y - C.y, d = Math.hypot(dx, dy) || 1; return { x: p.x + dx / d * pad, y: p.y + dy / d * pad }; });
+  let h = '<path d="M' + q.map((p) => frR(p.x) + ' ' + frR(p.y)).join(' L') + ' Z" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>';
+  if (!handles) return h;
+  const s = 5.5 / k, hit = 16 / k, up = { x: P.n.x - C.x, y: P.n.y - C.y }, ul = Math.hypot(up.x, up.y) || 1, R = { x: P.n.x + up.x / ul * 26 / k, y: P.n.y + up.y / ul * 26 / k };
+  h += '<path d="M' + frR(P.n.x) + ' ' + frR(P.n.y) + ' L' + frR(R.x) + ' ' + frR(R.y) + '" stroke="#1E88E5" stroke-width="' + 1.5 / k + '"/>';
+  Object.keys(P).forEach((n) => { const p = P[n]; h += '<rect x="' + frR(p.x - s) + '" y="' + frR(p.y - s) + '" width="' + 2 * s + '" height="' + 2 * s + '" fill="#fff" stroke="#1E88E5" stroke-width="' + 1.6 / k + '"/><circle cx="' + frR(p.x) + '" cy="' + frR(p.y) + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="' + n + '"/>'; });
+  h += '<circle cx="' + frR(R.x) + '" cy="' + frR(R.y) + '" r="' + 6.5 / k + '" fill="#1E88E5" stroke="#fff" stroke-width="' + 1.6 / k + '"/><circle cx="' + frR(R.x) + '" cy="' + frR(R.y) + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="rot"/>';
+  return h;
+}
+function frOverlay() {
+  const Z = S.designer, F = Z && Z.free, ui = document.getElementById('fr-ui'); if (!F || !ui) return;
+  const sels = frSelectedSafe(); if (F.sel && !frGet(F.sel)) F.sel = null;
+  let h = sels.map((el) => frFrame(el, F.zoom, F.tool === 'select' && sels.length === 1)).join('');
+  if (F.tool === 'poly' && F.pts && F.pts.length) {
+    const z = 1 / F.zoom, r = 5.5 * z;
+    h += '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, F.closed && F.pts.length > 2) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed && F.pts.length > 2 ? ' Z' : '')) : '') + '" fill="' + (F.closed && !F.noFill ? F.fill : 'none') + '" fill-opacity=".35" stroke="#1E88E5" stroke-width="' + 2 * z + '"/>'
+      + F.pts.map((p, i) => (p.c ? '<rect x="' + (p.x - r) + '" y="' + (p.y - r) + '" width="' + 2 * r + '" height="' + 2 * r + '" fill="#E8553D"' : '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + (i === F.pts.length - 1 ? '#0D47A1' : i === 0 ? '#2E7D32' : '#1E88E5') + '"') + ' stroke="#fff" stroke-width="' + 1.5 * z + '"/>').join('');
+  }
+  ui.innerHTML = h;
 }
 function frMount() {
   const Z = S.designer, F = Z && Z.free, svg = document.getElementById('fr-svg'); if (!F || !svg) return;
   const ui = document.getElementById('fr-ui');
-  const sel = frGet(F.sel);
-  if (F.sel && !sel) F.sel = null;
-  if (sel) ui.innerHTML = frHandles(frBox(sel), F.zoom, F.tool === 'select');
-  const drawPts = () => { if (!(F.tool === 'poly' && F.pts && F.pts.length)) return ''; const z = 1 / F.zoom, r = 5 * z;
-    return '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, F.closed && F.pts.length > 2) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '')) : '') + '" fill="' + (F.closed && !F.noFill ? F.fill : 'none') + '" fill-opacity=".35" stroke="#1E88E5" stroke-width="' + 2 * z + '"/>'
-      + F.pts.map((p, i) => p.c ? '<rect x="' + (p.x - r) + '" y="' + (p.y - r) + '" width="' + 2 * r + '" height="' + 2 * r + '" fill="#E8553D" stroke="#fff" stroke-width="' + 1.5 * z + '"/>' : '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + (i === F.pts.length - 1 ? '#0D47A1' : '#1E88E5') + '" stroke="#fff" stroke-width="' + 1.5 * z + '"/>').join(''); };
-  ui.innerHTML += drawPts();
-  let drag = null; const touches = new Map(); let pinch = null;
-  const setVB = () => { const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); const zl = document.getElementById('fr-zl'); if (zl) zl.textContent = Math.round(F.zoom * 100) + '%'; ui.innerHTML = ''; };
-  const zoomAt = (z, sx, sy) => { // keep the point under (sx, sy) on screen where it is
+  frOverlay();
+  let drag = null; const touches = new Map(); let pinch = null, ovT = 0;
+  const later = () => { clearTimeout(ovT); ovT = setTimeout(frOverlay, 120); };
+  const setVB = () => { frClampView(F); const vw = 400 / F.zoom; svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); const zl = document.getElementById('fr-zl'); if (zl) zl.textContent = Math.round(F.zoom * 100) + '%'; ui.innerHTML = ''; later(); };
+  const zoomAt = (z, sx, sy) => {
     const r = svg.getBoundingClientRect(), vw0 = 400 / F.zoom, x0 = F.cx - vw0 / 2, y0 = F.cy - vw0 / 2, px = x0 + (sx - r.left) / r.width * vw0, py = y0 + (sy - r.top) / r.height * vw0;
-    F.zoom = Math.max(1, Math.min(12, z)); const vw = 400 / F.zoom; F.cx = px - (sx - r.left) / r.width * vw + vw / 2; F.cy = py - (sy - r.top) / r.height * vw + vw / 2; setVB();
+    F.zoom = Math.max(1, Math.min(16, z)); const vw = 400 / F.zoom; F.cx = px - (sx - r.left) / r.width * vw + vw / 2; F.cy = py - (sy - r.top) / r.height * vw + vw / 2; setVB();
   };
   svg.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(F.zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), ev.clientX, ev.clientY); }, { passive: false });
-  svg.addEventListener('pointerdown', (ev) => { touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: F.zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; drag = null; ui.innerHTML = ''; } }, true);
+  // two fingers = zoom/pan, whatever the tool (and cancels what the first finger started)
+  svg.addEventListener('pointerdown', (ev) => { touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: F.zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; if (drag && drag.undo) drag.undo(); drag = null; ui.innerHTML = ''; } }, true);
   svg.addEventListener('pointermove', (ev) => {
     if (!touches.has(ev.pointerId)) return; touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pinch && touches.size === 2) { const [a, b] = [...touches.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, r = svg.getBoundingClientRect();
       zoomAt(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, pinch.d), mx, my);
       const k = 400 / F.zoom / r.width; F.cx -= (mx - pinch.mx) * k; F.cy -= (my - pinch.my) * k; pinch.mx = mx; pinch.my = my; setVB(); ev.stopImmediatePropagation(); }
   }, true);
-  const lift = (ev) => { touches.delete(ev.pointerId); if (pinch) { ev.stopImmediatePropagation(); if (!touches.size) { pinch = null; drag = null; renderSheet(true); } } };
+  const lift = (ev) => { touches.delete(ev.pointerId); if (pinch) { ev.stopImmediatePropagation(); if (!touches.size) { pinch = null; drag = null; frOverlay(); } } };
   svg.addEventListener('pointerup', lift, true); svg.addEventListener('pointercancel', lift, true);
   svg.addEventListener('pointerdown', (ev) => {
     if (ev.button > 0 || pinch) return; ev.preventDefault();
-    const p = frPt(ev); svg.setPointerCapture(ev.pointerId);
+    const p = frPt(ev); try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
     if (F.tool === 'pan') { drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, cx: F.cx, cy: F.cy, k: 400 / F.zoom / svg.getBoundingClientRect().width }; return; }
-    if (F.tool === 'select' && ev.target.dataset && ev.target.dataset.h && frGet(F.sel)) {
-      const el = frGet(F.sel); drag = { kind: 'handle', h: ev.target.dataset.h, el, b: frBox(el), p, base: el.getAttribute('transform') || '', before: F.src[F.view], moved: false }; return;
+    const root = frRoot();
+    if (F.tool === 'select' && ev.target.dataset && ev.target.dataset.h) {
+      const el = frSelected()[0]; if (!el) return;
+      let b; try { b = el.getBBox(); } catch (e) { return; }
+      const before = F.src[F.view], base = el.getAttribute('transform') || '';
+      drag = { kind: 'handle', h: ev.target.dataset.h, el, b, m: frM(el), mp: frMP(el), p, base, before, moved: false, undo: () => { if (base) el.setAttribute('transform', base); else el.removeAttribute('transform'); } }; return;
     }
     if (F.tool === 'select' || F.tool === 'bucket') {
-      let t = ev.target; if (t.dataset && t.dataset.frBg) t = null;
-      const root = document.getElementById('fr-root'); if (t && !root.contains(t)) t = null;
-      if (t && F.tool === 'bucket') { frSnap(); if (F.noFill) t.setAttribute('stroke', F.stroke); else t.setAttribute('fill', F.fill); t.style && t.style.removeProperty('fill'); frCommit(); return; }
-      if (!t) { F.sel = null; renderSheet(true); return; }
+      let t = ev.target; if (!t || (t.dataset && t.dataset.frBg) || !root.contains(t) || t === root) t = null;
+      if (t && F.tool === 'bucket') {
+        frSnap(); const noFill = t.getAttribute('fill') === 'none' || (t.nodeName === 'line' || t.nodeName === 'polyline');
+        if (F.noFill || noFill) t.setAttribute('stroke', F.noFill ? F.stroke : F.fill); else { t.setAttribute('fill', F.fill); if (t.style) t.style.removeProperty('fill'); }
+        frCommit(); return;
+      }
+      if (!t) { if (!F.multiOn) { F.sel = null; F.multi = []; frRender(); } return; }
       let el = t; if (!F.deep) while (el.parentNode !== root) el = el.parentNode;
-      F.sel = frPathOf(el); drag = { kind: 'move', el, p, base: el.getAttribute('transform') || '', moved: false, before: F.src[F.view] };
-      ui.innerHTML = ''; const b = frBox(el); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="2" stroke-dasharray="6 4"/>';
+      if (F.multiOn) {
+        const cur = frSelected(); const inSel = cur.includes(el);
+        // pressing on a chosen part starts moving all of them; a tap without moving toggles it
+        drag = { kind: 'move', els: inSel ? cur : cur.concat([el]), toggle: el, wasIn: inSel, p, bases: null, moved: false, before: F.src[F.view] };
+      } else { F.sel = frPathOf(el); F.multi = []; drag = { kind: 'move', els: [el], p, moved: false, before: F.src[F.view] }; }
+      drag.bases = drag.els.map((e) => e.getAttribute('transform') || ''); drag.mps = drag.els.map((e) => frMP(e).inverse());
+      drag.undo = () => drag && drag.els.forEach((e, i) => { if (drag.bases[i]) e.setAttribute('transform', drag.bases[i]); else e.removeAttribute('transform'); });
+      if (!F.multiOn) ui.innerHTML = frFrame(el, F.zoom, false);
       return;
     }
-    if (F.tool === 'poly') { // tap = new point; on an existing point: tap toggles curve/bico, drag moves it
-      const tol = 14 * (400 / F.zoom) / svg.getBoundingClientRect().width; let hit = -1;
+    if (F.tool === 'poly') {
+      const tol = 16 * (400 / F.zoom) / svg.getBoundingClientRect().width; let hit = -1;
       (F.pts || []).forEach((q, i) => { if (Math.hypot(q.x - p.x, q.y - p.y) <= tol) hit = i; });
       drag = hit >= 0 ? { kind: 'pt', i: hit, moved: false, p } : { kind: 'polyadd', p }; return;
     }
-    if (F.tool === 'text') { const tx = (document.getElementById('fr-text') || {}).value || F.text; if (!tx.trim()) { toast('Escreve primeiro o texto.'); return; } F.text = tx; frAdd('<text x="' + p.x + '" y="' + p.y + '" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + F.fs + '" text-anchor="middle" fill="' + (F.noFill ? F.stroke : F.fill) + '"' + (F.noStroke ? '' : ' stroke="' + F.stroke + '" stroke-width="' + Math.min(F.sw, 2) + '" paint-order="stroke"') + '>' + esc(tx) + '</text>'); return; }
+    if (F.tool === 'text') { const tx = (document.getElementById('fr-text') || {}).value || F.text; if (!tx.trim()) { toast('Escreve primeiro o texto.'); return; } F.text = tx; frAdd('<text x="' + p.x + '" y="' + p.y + '" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + F.fs + '" text-anchor="middle" dominant-baseline="middle" fill="' + (F.noFill ? F.stroke : F.fill) + '"' + (F.noStroke ? '' : ' stroke="' + F.stroke + '" stroke-width="' + Math.min(F.sw, 2) + '" paint-order="stroke"') + '>' + esc(tx) + '</text>'); return; }
     drag = { kind: F.tool, p, pts: [p] };
   });
   svg.addEventListener('pointermove', (ev) => {
     if (!drag || pinch) return; const p = frPt(ev);
-    if (drag.kind === 'pt') { const q = F.pts[drag.i]; if (Math.hypot(p.x - drag.p.x, p.y - drag.p.y) > 1.5 / F.zoom) drag.moved = true; if (drag.moved) { q.x = p.x; q.y = p.y; ui.innerHTML = drawPts(); } return; }
+    if (drag.kind === 'pt') { const q = F.pts[drag.i]; if (Math.hypot(p.x - drag.p.x, p.y - drag.p.y) > 2 / F.zoom) drag.moved = true; if (drag.moved) { q.x = p.x; q.y = p.y; frOverlay(); } return; }
     if (drag.kind === 'polyadd') return;
     if (drag.kind === 'handle') {
-      const g = drag, b = g.b, h = g.h, r1 = (n) => Math.round(n * 1000) / 1000; let t;
-      if (h === 'rot') {
-        const cx = b.cx, cy = b.cy; let a = (Math.atan2(p.y - cy, p.x - cx) - Math.atan2(g.p.y - cy, g.p.x - cx)) * 180 / Math.PI;
-        if (F.snap) a = Math.round(a / 15) * 15;
-        t = 'rotate(' + Math.round(a * 10) / 10 + ' ' + r1(cx) + ' ' + r1(cy) + ')';
-      } else {
-        const ax = h.includes('w') ? b.x + b.w : h.includes('e') ? b.x : b.cx, ay = h.includes('n') ? b.y + b.h : h.includes('s') ? b.y : b.cy;
-        const ox = h.includes('w') ? b.x : h.includes('e') ? b.x + b.w : b.cx, oy = h.includes('n') ? b.y : h.includes('s') ? b.y + b.h : b.cy;
-        let sx = h === 'n' || h === 's' ? 1 : (p.x - ax) / ((ox - ax) || 1), sy = h === 'e' || h === 'w' ? 1 : (p.y - ay) / ((oy - ay) || 1);
-        if (h.length === 2 && F.keepRatio) { const s = Math.hypot(p.x - ax, p.y - ay) / (Math.hypot(ox - ax, oy - ay) || 1); sx = sy = s; }
-        sx = Math.max(0.05, sx); sy = Math.max(0.05, sy);
-        t = 'translate(' + r1(ax) + ' ' + r1(ay) + ') scale(' + r1(sx) + ' ' + r1(sy) + ') translate(' + r1(-ax) + ' ' + r1(-ay) + ')';
+      const g = drag, b = g.b, h = g.h; let t;
+      if (h === 'rot') { // rotate in the parent's space around the part's centre
+        const mpi = g.mp.inverse(), c = frApply(g.mp.inverse().multiply(g.m), { x: b.x + b.width / 2, y: b.y + b.height / 2 }), a0 = frApply(mpi, g.p), a1 = frApply(mpi, p);
+        let a = (Math.atan2(a1.y - c.y, a1.x - c.x) - Math.atan2(a0.y - c.y, a0.x - c.x)) * 180 / Math.PI; if (F.snap) a = Math.round(a / 15) * 15;
+        g.el.setAttribute('transform', ('rotate(' + frR(a) + ' ' + frR(c.x) + ' ' + frR(c.y) + ') ' + g.base).trim());
+      } else { // resize in the part's own space (so it follows its rotation)
+        const q = frApply(g.m.inverse(), p), x0 = b.x, y0 = b.y, x1 = b.x + b.width, y1 = b.y + b.height;
+        const ax = h.includes('w') ? x1 : h.includes('e') ? x0 : (x0 + x1) / 2, ay = h.includes('n') ? y1 : h.includes('s') ? y0 : (y0 + y1) / 2;
+        const ox = h.includes('w') ? x0 : h.includes('e') ? x1 : ax, oy = h.includes('n') ? y0 : h.includes('s') ? y1 : ay;
+        let sx = h === 'n' || h === 's' ? 1 : (q.x - ax) / ((ox - ax) || 1), sy = h === 'e' || h === 'w' ? 1 : (q.y - ay) / ((oy - ay) || 1);
+        if (h.length === 2 && F.keepRatio) { const s = Math.max(sx, sy); sx = sy = s; }
+        sx = Math.max(0.03, sx); sy = Math.max(0.03, sy);
+        g.el.setAttribute('transform', (g.base + ' translate(' + frR(ax) + ' ' + frR(ay) + ') scale(' + frR(sx * 1000) / 1000 + ' ' + frR(sy * 1000) / 1000 + ') translate(' + frR(-ax) + ' ' + frR(-ay) + ')').trim());
       }
-      g.moved = true; g.el.setAttribute('transform', (t + ' ' + g.base).trim()); ui.innerHTML = frHandles(frBox(g.el), F.zoom, false); return;
+      g.moved = true; ui.innerHTML = frFrame(g.el, F.zoom, false); return;
     }
-    if (drag.kind === 'pan') { F.cx = drag.cx - (ev.clientX - drag.sx) * drag.k; F.cy = drag.cy - (ev.clientY - drag.sy) * drag.k; const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); return; }
-    if (drag.kind === 'move') { const dx = p.x - drag.p.x, dy = p.y - drag.p.y; if (Math.abs(dx) + Math.abs(dy) > 0.6) drag.moved = true; if (drag.moved) { drag.el.setAttribute('transform', ('translate(' + Math.round(dx * 10) / 10 + ' ' + Math.round(dy * 10) / 10 + ') ' + drag.base).trim()); const b = frBox(drag.el); ui.firstChild && (ui.firstChild.setAttribute('x', b.x - 3), ui.firstChild.setAttribute('y', b.y - 3)); } return; }
+    if (drag.kind === 'pan') { F.cx = drag.cx - (ev.clientX - drag.sx) * drag.k; F.cy = drag.cy - (ev.clientY - drag.sy) * drag.k; setVB(); return; }
+    if (drag.kind === 'move') {
+      if (Math.hypot(p.x - drag.p.x, p.y - drag.p.y) > 1.2 / F.zoom) drag.moved = true; if (!drag.moved) return;
+      drag.els.forEach((e, i) => { const a = frApply(drag.mps[i], drag.p), c = frApply(drag.mps[i], p); e.setAttribute('transform', ('translate(' + frR(c.x - a.x) + ' ' + frR(c.y - a.y) + ') ' + drag.bases[i]).trim()); });
+      ui.innerHTML = drag.els.map((e) => frFrame(e, F.zoom, false)).join(''); return;
+    }
     const a = drag.p; let d = '';
-    if (drag.kind === 'pen') { drag.pts.push(p); d = '<path d="M' + drag.pts.map((q) => q.x + ' ' + q.y).join(' L') + '" fill="none" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round"/>'; }
-    if (drag.kind === 'line') d = '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="#1E88E5" stroke-width="2"/>';
-    if (drag.kind === 'rect') d = '<rect x="' + Math.min(a.x, p.x) + '" y="' + Math.min(a.y, p.y) + '" width="' + Math.abs(p.x - a.x) + '" height="' + Math.abs(p.y - a.y) + '" fill="none" stroke="#1E88E5" stroke-width="2"/>';
-    if (drag.kind === 'ellipse') d = '<ellipse cx="' + (a.x + p.x) / 2 + '" cy="' + (a.y + p.y) / 2 + '" rx="' + Math.abs(p.x - a.x) / 2 + '" ry="' + Math.abs(p.y - a.y) / 2 + '" fill="none" stroke="#1E88E5" stroke-width="2"/>';
+    if (drag.kind === 'pen') { drag.pts.push(p); d = '<path d="M' + drag.pts.map((q) => q.x + ' ' + q.y).join(' L') + '" fill="none" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round" stroke-linejoin="round"/>'; }
+    if (drag.kind === 'line') d = '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round" opacity=".7"/>';
+    if (drag.kind === 'rect') d = '<rect x="' + Math.min(a.x, p.x) + '" y="' + Math.min(a.y, p.y) + '" width="' + Math.abs(p.x - a.x) + '" height="' + Math.abs(p.y - a.y) + '" ' + frAttr(F) + ' opacity=".6"/>';
+    if (drag.kind === 'ellipse') d = '<ellipse cx="' + (a.x + p.x) / 2 + '" cy="' + (a.y + p.y) / 2 + '" rx="' + Math.abs(p.x - a.x) / 2 + '" ry="' + Math.abs(p.y - a.y) / 2 + '" ' + frAttr(F) + ' opacity=".6"/>';
     drag.end = p; ui.innerHTML = d;
   });
   const end = (ev) => {
-    const g = drag; drag = null;
-    if (g && g.kind === 'pt') { if (!g.moved) F.pts[g.i].c = !F.pts[g.i].c; renderSheet(true); return; }
-    if (g && g.kind === 'polyadd') { const p = frPt(ev); F.pts = (F.pts || []).concat([{ x: p.x, y: p.y, c: F.corner }]); renderSheet(true); return; }
-    if (!g) return;
-    if (g.kind === 'pan') return;
-    if (g.kind === 'handle') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; frCommit(); } else renderSheet(true); return; }
-    if (g.kind === 'move') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; F.sel = frPathOf(g.el); frCommit(); } else renderSheet(true); return; }
+    const g = drag; drag = null; if (!g || pinch) return;
+    if (g.kind === 'pt') { if (!g.moved) { if (g.i === 0 && F.pts.length >= 3 && !F.editing) { F.closed = true; frFinishPoly(); return; } F.pts[g.i].c = !F.pts[g.i].c; } frRender(); return; }
+    if (g.kind === 'polyadd') { const p = frPt(ev); F.pts = (F.pts || []).concat([{ x: p.x, y: p.y, c: F.corner }]); frRender(); return; }
+    if (g.kind === 'pan') { frOverlay(); return; }
+    if (g.kind === 'handle') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; Z_dirty(); frCommit(); } else frOverlay(); return; }
+    if (g.kind === 'move') {
+      if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; Z_dirty(); frSetSel(g.els); frCommit(); return; }
+      if (F.multiOn) { const cur = frSelected(); frSetSel(g.wasIn ? cur.filter((e) => e !== g.toggle) : cur.concat([g.toggle])); }
+      frRender(); return;
+    }
     const a = g.p, p = g.end; const r1 = (n) => Math.round(n * 10) / 10;
-    if (g.kind === 'pen') { if (g.pts.length < 2) { ui.innerHTML = ''; return; } const pts = frSimplify(g.pts, 3); frAdd('<path d="' + frSmooth(pts, F.closed) + '" ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return; }
-    if (!p || Math.hypot(p.x - a.x, p.y - a.y) < 2) { ui.innerHTML = ''; return; }
-    if (g.kind === 'line') frAdd('<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round"/>');
-    if (g.kind === 'rect') frAdd('<rect x="' + r1(Math.min(a.x, p.x)) + '" y="' + r1(Math.min(a.y, p.y)) + '" width="' + r1(Math.abs(p.x - a.x)) + '" height="' + r1(Math.abs(p.y - a.y)) + '" rx="' + r1(Math.min(Math.abs(p.x - a.x), Math.abs(p.y - a.y)) * 0.12) + '" ' + frAttr(F) + '/>');
-    if (g.kind === 'ellipse') frAdd('<ellipse cx="' + r1((a.x + p.x) / 2) + '" cy="' + r1((a.y + p.y) / 2) + '" rx="' + r1(Math.abs(p.x - a.x) / 2) + '" ry="' + r1(Math.abs(p.y - a.y) / 2) + '" ' + frAttr(F) + '/>');
+    if (g.kind === 'pen') { if (g.pts.length < 2) { ui.innerHTML = ''; return; } const pts = frSimplify(g.pts, 2.5 / F.zoom); frAdd('<path d="' + frSmooth(pts, F.penClosed) + '" ' + frAttr(F, !F.penClosed) + '/>', true); return; }
+    if (!p || Math.hypot(p.x - a.x, p.y - a.y) < 2 / F.zoom) { ui.innerHTML = ''; return; }
+    if (g.kind === 'line') frAdd('<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round"/>', true);
+    if (g.kind === 'rect') frAdd('<rect x="' + r1(Math.min(a.x, p.x)) + '" y="' + r1(Math.min(a.y, p.y)) + '" width="' + r1(Math.abs(p.x - a.x)) + '" height="' + r1(Math.abs(p.y - a.y)) + '" rx="' + r1(Math.min(Math.abs(p.x - a.x), Math.abs(p.y - a.y)) * 0.12) + '" ' + frAttr(F) + '/>', true);
+    if (g.kind === 'ellipse') frAdd('<ellipse cx="' + r1((a.x + p.x) / 2) + '" cy="' + r1((a.y + p.y) / 2) + '" rx="' + r1(Math.abs(p.x - a.x) / 2) + '" ry="' + r1(Math.abs(p.y - a.y) / 2) + '" ' + frAttr(F) + '/>', true);
   };
-  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', (ev) => { drag = null; ui.innerHTML = ''; });
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', () => { if (drag && drag.undo) drag.undo(); drag = null; frOverlay(); });
+}
+function frFinishPoly() {
+  const F = S.designer.free, pts = F.pts || []; if (pts.length < 2) return;
+  const d = F.smooth ? frSmooth(pts, F.closed) : 'M' + pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '');
+  const data = pts.map((p) => p.x + ',' + p.y + (p.c ? ',1' : '')).join(';');
+  F.pts = null;
+  if (F.editing) { const old = frGet(F.editing.path); F.editing = null; if (old) { frSnap(); old.setAttribute('d', d); old.setAttribute('data-pts', data); old.setAttribute('data-closed', F.closed ? 1 : 0); old.setAttribute('data-smooth', F.smooth ? 1 : 0); F.sel = frPathOf(old); F.tool = 'select'; frCommit(); return; } }
+  frAdd('<path d="' + d + '" data-pts="' + data + '" data-closed="' + (F.closed ? 1 : 0) + '" data-smooth="' + (F.smooth ? 1 : 0) + '" ' + frAttr(F, !F.closed) + '/>', true);
+}
+function frElementMarkup(els) { // the chosen parts, baked to drawing space, moved to (0,0), with the defs they use
+  const root = frRoot(); let bx = 1e9, by = 1e9, bx2 = -1e9, by2 = -1e9, body = '';
+  const refs = new Set();
+  els.forEach((el) => {
+    const b = frBox(el); bx = Math.min(bx, b.x); by = Math.min(by, b.y); bx2 = Math.max(bx2, b.x + b.w); by2 = Math.max(by2, b.y + b.h);
+    // keep the groups it sits in (their position, clip and inherited colours), emptied of everything else
+    let node = el.cloneNode(true);
+    for (let a = el.parentNode; a && a !== root; a = a.parentNode) { const w = a.cloneNode(false); w.appendChild(node); node = w; }
+    const s = frXS(node); s.replace(/url\(#([^)]+)\)|href="#([^"]+)"/g, (x, a, b2) => { refs.add(a || b2); return x; });
+    body += s;
+  });
+  let defs = ''; refs.forEach((id) => { const d = root.querySelector('[id="' + id.replace(/"/g, '') + '"]'); if (d) defs += frXS(d); });
+  return { svg: '<g transform="translate(' + frR(-bx) + ' ' + frR(-by) + ')">' + (defs ? '<defs>' + defs + '</defs>' : '') + body + '</g>', w: frR(bx2 - bx), h: frR(by2 - by) };
 }
 function frAct(a) {
   const Z = S.designer, F = Z.free, items = frItems();
-  if (a === 'none') { F.sel = null; renderSheet(true); return; }
+  if (a === 'none') { F.sel = null; F.multi = []; frRender(); return; }
   if (a === 'next' || a === 'prev') {
     const cur = frGet(F.sel), top = cur ? (F.deep ? cur : items.find((x) => x === cur || x.contains(cur))) : null;
     const i = top ? items.indexOf(top) : -1, n = items.length; if (!n) return;
-    F.sel = frPathOf(items[a === 'next' ? (i + 1) % n : (i - 1 + n) % n]); renderSheet(true); return;
+    F.multi = []; F.sel = frPathOf(items[a === 'next' ? (i + 1) % n : (i - 1 + n) % n]); frRender(); return;
   }
-  const el = frGet(F.sel); if (!el) return;
-  if (a === 'editpts') { const raw = el.getAttribute('data-pts') || ''; if (!raw) return; if (el.getAttribute('transform')) { toast('Esta forma foi mexida (movida ou rodada): os pontos aparecem onde estavam.'); } F.pts = raw.split(';').map((q) => { const v = q.split(','); return { x: +v[0], y: +v[1], c: v[2] === '1' }; }); F.closed = el.getAttribute('data-closed') !== '0'; F.smooth = el.getAttribute('data-smooth') !== '0'; F.editing = { path: F.sel }; F.sel = null; F.tool = 'poly'; renderSheet(true); return; }
-  if (a === 'copy') { const f = el.getAttribute('fill'), s = el.getAttribute('stroke'), w = el.getAttribute('stroke-width'); if (f && /^#[0-9a-f]{6}$/i.test(f)) { F.fill = f.toUpperCase(); F.noFill = false; } else if (f === 'none') F.noFill = true; if (s && /^#[0-9a-f]{6}$/i.test(s)) { F.stroke = s.toUpperCase(); F.noStroke = false; } else if (s === 'none') F.noStroke = true; if (w && !isNaN(+w)) F.sw = +w; renderSheet(true); return; }
+  const sels = frSelected(); if (!sels.length) return; const el = sels[0];
+  if (a === 'saveel') {
+    const name = (window.prompt('Nome do elemento (ex.: símbolo, bolso, atacadores)', '') || '').trim(); if (!name) return;
+    const m = frElementMarkup(sels);
+    db.collection('elements').add({ name, svg: m.svg, w: m.w, h: m.h, createdAt: new Date().toISOString() }).then(() => { toast('Guardado em «Os meus elementos».'); F.libOpen = true; frRender(); });
+    return;
+  }
+  if (a === 'editpts') { const raw = el.getAttribute('data-pts') || ''; if (!raw) return; if (el.getAttribute('transform')) toast('Esta forma foi mexida (movida, rodada ou esticada): os pontos aparecem onde estavam antes.'); F.pts = raw.split(';').map((q) => { const v = q.split(','); return { x: +v[0], y: +v[1], c: v[2] === '1' }; }); F.closed = el.getAttribute('data-closed') !== '0'; F.smooth = el.getAttribute('data-smooth') !== '0'; F.editing = { path: F.sel }; F.sel = null; F.multi = []; F.tool = 'poly'; frRender(); return; }
+  if (a === 'copy') { const f = el.getAttribute('fill'), s = el.getAttribute('stroke'), w = el.getAttribute('stroke-width'); if (f && /^#[0-9a-f]{6}$/i.test(f)) { F.fill = f.toUpperCase(); F.noFill = false; } else if (f === 'none') F.noFill = true; if (s && /^#[0-9a-f]{6}$/i.test(s)) { F.stroke = s.toUpperCase(); F.noStroke = false; } else if (s === 'none') F.noStroke = true; if (w && !isNaN(+w)) F.sw = +w; frRender(); return; }
   frSnap();
-  const b = frBox(el), c = b.cx + ' ' + b.cy, ac = (t) => frPre(el, 'translate(' + c + ') ' + t + ' translate(' + -b.cx + ' ' + -b.cy + ')');
+  const around = (e, t) => { const b = frBox(e), c = frApply(frMP(e).inverse(), { x: b.cx, y: b.cy }); frPre(e, 'translate(' + frR(c.x) + ' ' + frR(c.y) + ') ' + t + ' translate(' + frR(-c.x) + ' ' + frR(-c.y) + ')'); };
+  const nudge = (dx, dy) => sels.forEach((e) => { const v = frParentVec(e, { x: 0, y: 0 }, { x: dx, y: dy }); frPre(e, 'translate(' + frR(v.x) + ' ' + frR(v.y) + ')'); });
   const step = 2 / F.zoom;
   switch (a) {
-    case 'fill': el.setAttribute('fill', F.noFill ? 'none' : F.fill); break;
-    case 'stroke': el.setAttribute('stroke', F.noStroke ? 'none' : F.stroke); if (!F.noStroke && !el.getAttribute('stroke-width')) el.setAttribute('stroke-width', F.sw); break;
-    case 'width': el.setAttribute('stroke-width', F.sw); break;
-    case 'front': el.parentNode.appendChild(el); break;
-    case 'back': { const first = Array.from(el.parentNode.children).find((n) => !FR_SKIP.has(n.nodeName)); if (first && first !== el) el.parentNode.insertBefore(el, first); break; }
-    case 'dup': { const cp = el.cloneNode(true); el.parentNode.insertBefore(cp, el.nextSibling); frPre(cp, 'translate(12 12)'); F.sel = frPathOf(cp); break; }
-    case 'flip': ac('scale(-1 1)'); break;
-    case 'flipv': ac('scale(1 -1)'); break;
-    case 'rotl': ac('rotate(-15)'); break;
-    case 'rotr': ac('rotate(15)'); break;
-    case 'big': ac('scale(1.1)'); break;
-    case 'small': ac('scale(0.9091)'); break;
-    case 'wide': ac('scale(1.1 1)'); break;
-    case 'narrow': ac('scale(0.9091 1)'); break;
-    case 'tall': ac('scale(1 1.1)'); break;
-    case 'short': ac('scale(1 0.9091)'); break;
-    case 'l': frPre(el, 'translate(' + -step + ' 0)'); break;
-    case 'r': frPre(el, 'translate(' + step + ' 0)'); break;
-    case 'u': frPre(el, 'translate(0 ' + -step + ')'); break;
-    case 'd': frPre(el, 'translate(0 ' + step + ')'); break;
+    case 'front': sels.forEach((e) => e.parentNode.appendChild(e)); break;
+    case 'back': sels.slice().reverse().forEach((e) => { const first = Array.from(e.parentNode.children).find((n) => !FR_SKIP.has(n.nodeName)); if (first && first !== e) e.parentNode.insertBefore(e, first); }); break;
+    case 'dup': { const cps = sels.map((e) => { const cp = e.cloneNode(true); e.parentNode.insertBefore(cp, sels[sels.length - 1].nextSibling); const v = frParentVec(e, { x: 0, y: 0 }, { x: 12, y: 12 }); frPre(cp, 'translate(' + frR(v.x) + ' ' + frR(v.y) + ')'); return cp; }); frSetSel(cps); frCommit(); return; }
+    case 'flip': sels.forEach((e) => around(e, 'scale(-1 1)')); break;
+    case 'flipv': sels.forEach((e) => around(e, 'scale(1 -1)')); break;
+    case 'rotl': sels.forEach((e) => around(e, 'rotate(-15)')); break;
+    case 'rotr': sels.forEach((e) => around(e, 'rotate(15)')); break;
+    case 'big': sels.forEach((e) => around(e, 'scale(1.1)')); break;
+    case 'small': sels.forEach((e) => around(e, 'scale(0.9091)')); break;
+    case 'l': nudge(-step, 0); break;
+    case 'r': nudge(step, 0); break;
+    case 'u': nudge(0, -step); break;
+    case 'd': nudge(0, step); break;
+    case 'group': {
+      const parent = sels[0].parentNode; if (sels.some((e) => e.parentNode !== parent)) { F.hist.pop(); toast('Só dá para agrupar partes que estão no mesmo nível. Desliga «Partes dentro de grupos».'); return; }
+      const order = Array.from(parent.children), list = sels.slice().sort((x, y) => order.indexOf(x) - order.indexOf(y));
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); parent.insertBefore(g, list[list.length - 1].nextSibling); list.forEach((e) => g.appendChild(e));
+      F.multiOn = false; frSetSel([g]); frCommit(); return;
+    }
     case 'ungroup': {
       if (el.nodeName !== 'g') { F.hist.pop(); toast('Esta parte não é um grupo.'); return; }
       const tr = el.getAttribute('transform') || '', cp = el.getAttribute('clip-path'), op = el.getAttribute('opacity'), kids = Array.from(el.children);
-      const inherit = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'font-family', 'font-size', 'font-weight'];
+      const inherit = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'font-family', 'font-size', 'font-weight', 'fill-opacity', 'stroke-opacity'];
+      const out = [];
       kids.forEach((k) => {
         if (FR_SKIP.has(k.nodeName)) { el.parentNode.insertBefore(k, el); return; }
         if (tr) k.setAttribute('transform', (tr + ' ' + (k.getAttribute('transform') || '')).trim());
-        if (cp && !k.getAttribute('clip-path')) k.setAttribute('clip-path', cp);
+        if (cp && !k.getAttribute('clip-path')) { if (tr) { const w = document.createElementNS('http://www.w3.org/2000/svg', 'g'); w.setAttribute('clip-path', cp); w.setAttribute('transform', tr); k.setAttribute('transform', (k.getAttribute('transform') || '').replace(tr, '').trim() || ''); if (!k.getAttribute('transform')) k.removeAttribute('transform'); w.appendChild(k); el.parentNode.insertBefore(w, el); out.push(w); return; } k.setAttribute('clip-path', cp); }
         if (op) k.setAttribute('opacity', String((+(k.getAttribute('opacity') || 1)) * +op));
         inherit.forEach((n) => { const v = el.getAttribute(n); if (v && !k.getAttribute(n)) k.setAttribute(n, v); });
-        el.parentNode.insertBefore(k, el);
+        el.parentNode.insertBefore(k, el); out.push(k);
       });
-      F.sel = kids.length ? frPathOf(kids.find((k) => !FR_SKIP.has(k.nodeName)) || kids[0]) : null; el.remove(); break;
+      el.remove(); frSetSel(out.slice(0, 1)); frCommit(); return;
     }
-    case 'del': el.remove(); F.sel = null; break;
+    case 'del': sels.forEach((e) => e.remove()); F.sel = null; F.multi = []; frCommit(); return;
   }
-  frCommit();
+  frSetSel(sels); frCommit();
+}
+function frApplyStyle(kind, value) { // colours / width straight onto what is chosen (groups: every shape inside)
+  const sels = frSelected(); if (!sels.length) return false;
+  const shapes = (e) => (e.nodeName === 'g' ? Array.from(e.querySelectorAll('path,rect,circle,ellipse,polygon,polyline,line,text')).filter((x) => !x.closest('clipPath,defs,mask')) : [e]);
+  sels.forEach((e) => shapes(e).forEach((s) => {
+    if (kind === 'fill') { if (s.nodeName === 'line' || s.nodeName === 'polyline') return; if (e.nodeName === 'g' && s.getAttribute('fill') === 'none') return; s.setAttribute('fill', value); if (s.style) s.style.removeProperty('fill'); }
+    if (kind === 'stroke') { if (e.nodeName === 'g' && (!s.getAttribute('stroke') || s.getAttribute('stroke') === 'none') && value !== 'none') return; s.setAttribute('stroke', value); if (s.style) s.style.removeProperty('stroke'); }
+    if (kind === 'sw') s.setAttribute('stroke-width', value);
+  }));
+  return true;
 }
 function frUndo(redo) {
   const F = S.designer.free, from = redo ? F.fut : F.hist, to = redo ? F.hist : F.fut; if (!from.length) return;
-  const [view, src] = from.pop().split('\u0000'); to.push(view + '\u0000' + F.src[view]); F.src[view] = src; F.view = view; F.sel = null; renderSheet(true);
+  const [view, src] = from.pop().split('\u0000'); to.push(view + '\u0000' + F.src[view]); F.src[view] = src; F.view = view; F.sel = null; F.multi = []; F.pts = null; F.editing = null; frRender();
 }
+function frInsertElement(id) {
+  const Z = S.designer, F = Z.free, e = (S.elements || []).find((x) => x.id === id); if (!e) return;
+  const vw = 400 / F.zoom, s = Math.min(1, (vw * 0.5) / Math.max(e.w || 1, e.h || 1));
+  F.tool = 'select'; F.multiOn = false;
+  frAdd('<g data-el="' + esc(e.name || '') + '" transform="translate(' + frR(F.cx - (e.w * s) / 2) + ' ' + frR(F.cy - (e.h * s) / 2) + ') scale(' + frR(s * 1000) / 1000 + ')">' + frUniqIds(e.svg) + '</g>');
+}
+let frLive = false; // one undo step per colour/width change, however many «input» events it has
 document.addEventListener('click', (ev) => {
   const Z = S.designer; if (!Z || !Z.free || !Z.useFree) return;
   const t = ev.target.closest('button'); if (!t) return; const F = Z.free;
-  if (t.dataset.frTool) { F.tool = t.dataset.frTool; if (F.tool !== 'poly') { F.pts = null; F.editing = null; } renderSheet(true); return; }
-  if (t.dataset.frView) { F.view = t.dataset.frView; F.sel = null; renderSheet(true); return; }
-  if (t.dataset.frToggle) { const k = t.dataset.frToggle; F[k] = !F[k]; renderSheet(true); return; }
+  if (t.dataset.frTool) { F.tool = t.dataset.frTool; if (F.tool !== 'poly') { F.pts = null; F.editing = null; } if (F.tool !== 'select') F.multi = []; frRender(); return; }
+  if (t.dataset.frView) { F.view = t.dataset.frView; F.sel = null; F.multi = []; frRender(); return; }
+  if (t.dataset.frToggle) {
+    const k = t.dataset.frToggle; F[k] = !F[k];
+    if ((k === 'noFill' || k === 'noStroke') && frRoot() && frSelected().length) { frSnap(); frApplyStyle(k === 'noFill' ? 'fill' : 'stroke', F[k] ? 'none' : k === 'noFill' ? F.fill : F.stroke); frCommit(); return; }
+    if (k === 'multiOn') { if (F.multiOn && F.sel) F.multi = [F.sel]; if (!F.multiOn) { F.multi = []; } }
+    frRender(); return;
+  }
   if (t.dataset.frAct) { frAct(t.dataset.frAct); return; }
-  if (t.dataset.frPal) { if (F.longPal) { F.longPal = false; return; } F.fill = t.dataset.frPal; F.noFill = false; renderSheet(true); return; }
-  if (t.dataset.frZoom) { const z = t.dataset.frZoom; F.zoom = z === '1' ? 1 : Math.max(1, Math.min(12, F.zoom * (z === 'in' ? 1.6 : 1 / 1.6))); const sel = frGet(F.sel); if (sel && z === 'in') { const b = frBox(sel); F.cx = b.cx; F.cy = b.cy; } if (F.zoom === 1) { F.cx = 200; F.cy = 200; } renderSheet(true); return; }
+  if (t.dataset.frPal) { const c = t.dataset.frPal; if (F.palStroke) { F.stroke = c; F.noStroke = false; } else { F.fill = c; F.noFill = false; } if (frSelected().length) { frSnap(); frApplyStyle(F.palStroke ? 'stroke' : 'fill', c); frCommit(); return; } frRender(); return; }
+  if (t.dataset.frZoom) { const z = t.dataset.frZoom; F.zoom = z === '1' ? 1 : Math.max(1, Math.min(16, F.zoom * (z === 'in' ? 1.6 : 1 / 1.6))); const sel = frSelected()[0]; if (sel && z === 'in') { const b = frBox(sel); F.cx = b.cx; F.cy = b.cy; } if (F.zoom === 1) { F.cx = 200; F.cy = 200; } frRender(); return; }
   if (t.hasAttribute('data-fr-undo')) { frUndo(false); return; }
   if (t.hasAttribute('data-fr-redo')) { frUndo(true); return; }
-  if (t.hasAttribute('data-fr-polycancel')) { F.pts = null; F.editing = null; renderSheet(true); return; }
-  if (t.hasAttribute('data-fr-polydone')) {
-    const pts = F.pts || []; F.pts = null; if (pts.length < 2) return;
-    const d = F.smooth ? frSmooth(pts, F.closed) : 'M' + pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '');
-    const keep = ' data-pts="' + pts.map((p) => p.x + ',' + p.y + (p.c ? ',1' : '')).join(';') + '" data-closed="' + (F.closed ? 1 : 0) + '" data-smooth="' + (F.smooth ? 1 : 0) + '"';
-    if (F.editing) { const old = frGet(F.editing.path); F.editing = null; if (old) { frSnap(); old.setAttribute('d', d); old.setAttribute('data-pts', pts.map((p) => p.x + ',' + p.y + (p.c ? ',1' : '')).join(';')); old.setAttribute('data-closed', F.closed ? 1 : 0); old.setAttribute('data-smooth', F.smooth ? 1 : 0); F.sel = frPathOf(old); frCommit(); return; } }
-    frAdd('<path d="' + d + '"' + keep + ' ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return;
-  }
-  if (t.hasAttribute('data-fr-polyundo')) { if (F.pts && F.pts.length) F.pts.pop(); renderSheet(true); return; }
-  if (t.hasAttribute('data-fr-reset')) { frSnap(); F.src[F.view] = frParse(genSvg(Z.d, F.view === 'open')); F.sel = null; renderSheet(true); return; }
-  if (t.hasAttribute('data-fr-clear')) { frSnap(); F.src[F.view] = ''; F.sel = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-fr-polycancel')) { F.pts = null; F.editing = null; frRender(); return; }
+  if (t.hasAttribute('data-fr-polydone')) { frFinishPoly(); return; }
+  if (t.hasAttribute('data-fr-polyundo')) { if (F.pts && F.pts.length) F.pts.pop(); frRender(); return; }
+  if (t.hasAttribute('data-fr-copyclosed')) { frSnap(); F.src.open = F.src.closed; F.sel = null; frRender(); return; }
+  if (t.dataset.frIns) { frInsertElement(t.dataset.frIns); return; }
+  if (t.dataset.frEldel) { const e = (S.elements || []).find((x) => x.id === t.dataset.frEldel); if (e && window.confirm('Apagar o elemento «' + (e.name || '') + '»? Os desenhos onde já o puseste não mudam.')) db.doc('elements/' + e.id).delete().then(() => frRender()); return; }
+  if (t.hasAttribute('data-fr-reset')) { if (!window.confirm('Trocar o desenho pelo modelo da categoria? Podes anular a seguir.')) return; frSnap(); F.src[F.view] = frParse(genSvg(Z.d, F.view === 'open')); F.sel = null; F.multi = []; frRender(); return; }
+  if (t.hasAttribute('data-fr-clear')) { frSnap(); F.src[F.view] = ''; F.sel = null; F.multi = []; frRender(); return; }
 });
-document.addEventListener('contextmenu', (ev) => { const t = ev.target.closest && ev.target.closest('[data-fr-pal]'); if (!t || !S.designer || !S.designer.free) return; ev.preventDefault(); const F = S.designer.free; F.stroke = t.dataset.frPal; F.noStroke = false; F.longPal = true; setTimeout(() => { F.longPal = false; }, 600); renderSheet(true); });
 document.addEventListener('input', (ev) => {
   const Z = S.designer, el = ev.target; if (!Z || !Z.free) return; const F = Z.free;
-  if (el.id === 'fr-fill') { F.fill = el.value.toUpperCase(); F.noFill = false; }
-  else if (el.id === 'fr-stroke') { F.stroke = el.value.toUpperCase(); F.noStroke = false; }
-  else if (el.id === 'fr-sw') { F.sw = +el.value; const b = el.parentNode.querySelector('b'); if (b) b.textContent = el.value; }
+  const live = (kind, v) => { if (!frRoot() || !frSelected().length) return; if (!frLive) { frSnap(); frLive = true; } frApplyStyle(kind, v); frOverlay(); };
+  if (el.id === 'fr-fill') { F.fill = el.value.toUpperCase(); F.noFill = false; live('fill', F.fill); }
+  else if (el.id === 'fr-stroke') { F.stroke = el.value.toUpperCase(); F.noStroke = false; live('stroke', F.stroke); }
+  else if (el.id === 'fr-sw') { F.sw = +el.value; const b = el.parentNode.querySelector('b'); if (b) b.textContent = el.value; live('sw', F.sw); }
   else if (el.id === 'fr-text') F.text = el.value;
-  else if (el.id === 'fr-fs') F.fs = Math.max(6, Math.min(200, +el.value || 34));
+  else if (el.id === 'fr-fs') F.fs = Math.max(4, Math.min(200, +el.value || 34));
+  else if (el.id === 'fr-edittext' || el.id === 'fr-editfs') { const t = frSelected()[0]; if (!t) return; if (!frLive) { frSnap(); frLive = true; } if (el.id === 'fr-edittext') t.textContent = el.value; else t.setAttribute('font-size', Math.max(4, Math.min(200, +el.value || 34))); frOverlay(); }
   else if (el.id === 'fr-uop') { F.uop = +el.value; const im = document.querySelector('#fr-svg image'); if (im) im.setAttribute('opacity', F.uop / 100); }
 });
-document.addEventListener('keydown', (e) => {
-  const Z = S.designer; if (!Z || !Z.free || !Z.useFree || /input|textarea/i.test((e.target || {}).nodeName || '')) return;
-  if ((e.key === 'Delete' || e.key === 'Backspace') && Z.free.sel) { e.preventDefault(); frAct('del'); }
-  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); frUndo(e.shiftKey); }
-  else if (Z.free.sel && /^Arrow/.test(e.key)) { e.preventDefault(); frAct({ ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd' }[e.key]); }
+document.addEventListener('change', (ev) => {
+  const Z = S.designer, el = ev.target; if (!Z || !Z.free) return;
+  if (['fr-fill', 'fr-stroke', 'fr-sw', 'fr-edittext', 'fr-editfs'].includes(el.id)) { if (frLive) { frLive = false; frCommit(); } else frRender(); }
 });
+document.addEventListener('keydown', (e) => {
+  const Z = S.designer; if (!Z || !Z.free || !Z.useFree || /input|textarea|select/i.test((e.target || {}).nodeName || '')) return; const F = Z.free;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && frSelected().length) { e.preventDefault(); frAct('del'); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); frUndo(e.shiftKey); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && frSelected().length) { e.preventDefault(); frAct('dup'); }
+  else if (frSelected().length && /^Arrow/.test(e.key)) { e.preventDefault(); frAct({ ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd' }[e.key]); }
+  else if (e.key === 'Enter' && F.tool === 'poly' && F.pts && F.pts.length >= 2) { e.preventDefault(); frFinishPoly(); }
+});
+// leaving the editor with unsaved work asks first; Esc first cancels points / selection
+function dzMayClose() { const Z = S.designer; return !Z || !Z.dirty || window.confirm('Sair sem guardar? O que desenhaste perde-se.'); }
+function frEscape() { const Z = S.designer, F = Z && Z.free; if (!F || !Z.useFree) return false; if (F.pts && F.pts.length) { F.pts = null; F.editing = null; frRender(); return true; } if (frSelectedSafe().length) { F.sel = null; F.multi = []; frRender(); return true; } return false; }
 
 // ---------- recorte assistido da foto + caricatura proposta ----------
 // I draw a box around the piece and, if needed, brush «é peça» / «não é peça»; a colour model (k-means in Lab,
@@ -2920,7 +3062,7 @@ document.addEventListener('change', (ev) => {
   const el = ev.target;
   if (el.id === 'sort') { S.sort = el.value; pref('sort', S.sort); render(); }
 });
-document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { if (frEscape() || !dzMayClose()) return; const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
 document.addEventListener('input', (ev) => { const el = ev.target; if (el && el.dataset && 'minstyle' in el.dataset) { const v = document.getElementById('minsty-v'); if (v) v.textContent = Number(el.value) ? el.value : 'qualquer'; } });
 document.addEventListener('change', (ev) => { const el = ev.target; if (el && el.dataset && 'minstyle' in el.dataset) { pref('minStyle', String(Number(el.value) || 0)); render(); } });
 document.addEventListener('change', (ev) => { // camisola interior of a fit, of a day, or of the fit being built
@@ -2958,6 +3100,7 @@ async function boot() {
   sub(db.collection('uploads').orderBy('createdAt', 'desc').limit(60), 'uploads');
   sub(db.collection('days').orderBy('date', 'desc').limit(1000), 'days');
   sub(db.collection('fits').limit(500), 'fits');
+  db.collection('elements').onSnapshot((s) => { S.elements = s.docs.map((x) => ({ id: x.id, ...x.data() })); if (S.designer && S.designer.free && document.getElementById('fr-wrap') && S.designer.free.libOpen) frRender(); }, () => {});
 }
 boot();
 })();
