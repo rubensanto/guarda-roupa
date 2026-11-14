@@ -215,6 +215,23 @@ nav.tabs svg{width:24px;height:24px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;max-width:min(92vw,420px);padding:12px 16px;border-radius:14px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
 .toast[hidden]{display:none}
 @media (min-width:900px){.toast{bottom:28px}}
+.minsty{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;font-size:14px;color:var(--muted)}
+.minsty b{color:var(--fg);font-weight:600}
+.minsty input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.fr-stage{background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:6px}
+.fr-svg{display:block;width:100%;max-width:560px;margin:0 auto;aspect-ratio:1;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:#fff}
+.fr-svg.tool-select,.fr-svg.tool-bucket{cursor:pointer}.fr-svg.tool-pan{cursor:grab}.fr-svg.tool-pen,.fr-svg.tool-poly,.fr-svg.tool-line,.fr-svg.tool-rect,.fr-svg.tool-ellipse,.fr-svg.tool-text{cursor:crosshair}
+.fr-colors{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:14px}
+.fr-colors label{display:flex;align-items:center;gap:6px}
+.fr-colors input[type=color]{width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0;background:none}
+.fr-sw{flex:1 1 180px}.fr-sw input{flex:1}
+.fr-selbar{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;background:var(--sunk)}
+.fr-nudge{display:flex;gap:6px;flex-wrap:wrap}
+.cut-result{background:#E4E3DE;border-radius:14px;padding:10px;display:flex;justify-content:center}
+.cut-result img{max-width:100%;max-height:260px;object-fit:contain}
+.cut-props{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cut-prop{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:14px;border:1px solid var(--line);background:var(--tile);color:#222;font-size:13px}
+.cut-prop img{width:100%;aspect-ratio:1;object-fit:contain}
 .usels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
 .usel select{color:var(--fg);width:100%;min-width:0}
@@ -1123,6 +1140,7 @@ function styleHtml(key, st) { // the index as a button; tapping it shows where t
   return h;
 }
 let propCache = { key: '', res: null };
+const minStyle = () => Math.max(0, Math.min(95, Number(pref('minStyle')) || 0));
 // the pieces I asked proposals for («fits com estas peças»): the app fills in the rest
 function focusPieces() { return (S.withPieces || []).map((id) => S.pieces.find((x) => x.id === id)).filter((p) => p && !p.removed && groupOf(p) !== 'acc'); }
 function toggleWith(id) { // same slots as a fit: one casaco, one of each top type, one bottom, one calçado
@@ -1135,7 +1153,8 @@ const focusLabel = (fs) => fs.length > 2 ? fs.length + ' peças escolhidas' : fs
 function proposals() {
   const wx = wxNow(), skips = propSkips(), focus = focusPieces(), fOf = (test) => focus.find(test) || null;
   const fShoe = fOf((p) => subOf(p) === 'shoe'), fBottom = fOf((p) => groupOf(p) === 'bottom'), fOuter = fOf((p) => subOf(p) === 'outer'), fTops = focus.filter((p) => ['tee', 'shirt', 'sweater'].includes(subOf(p)));
-  const key = [focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  const minIdx = minStyle();
+  const key = [minIdx, focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
   const by = (sub) => S.pieces.filter((p) => subOf(p) === sub);
   const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = fShoe ? [fShoe] : by('shoe');
@@ -1183,6 +1202,7 @@ function proposals() {
     const main = outer && vis.length > 1 ? vis[1].p : vis[0].p;
     vis.push({ p: bottom, w: isShorts ? 2 : 3 }, { p: shoe, w: 1 });
     const hm = harmony({ vis, main, bottom, shoe });
+    if (hm.idx < minIdx) continue; // below my «índice mínimo»
     // --- history ---
     let hist = 0;
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) hist += pairW.get(ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]) || 0;
@@ -1240,7 +1260,9 @@ function topHtml() {
     if (fo || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
       + '<p class="status" style="font-size:13px">' + (fo ? 'Podes juntar mais peças (ex.: calças + calçado) ou tocar numa escolhida para a tirar. A app propõe o resto.' : 'Toca numa ou mais peças (ex.: calças + calçado) e a app propõe o resto.') + '</p>';
   }
-  h += R.list.length ? R.list.map(propCard).join('') : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
+  const mi = minStyle();
+  h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
+  h += R.list.length ? R.list.map(propCard).join('') : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo para veres propostas.</div>' : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
   return h + buildBtn() + '</section>';
 }
 async function useProposal(x) {
@@ -1589,7 +1611,7 @@ function renderSheet(force) {
   if (S.designer) {
     if (!force && el.dataset.mode === 'designer') return; // don't wipe the editor on background data updates
     el.hidden = false; el.dataset.mode = 'designer'; el.innerHTML = designerHtml();
-    const sc = el.querySelector('.sheet'); if (sc) sc.scrollTop = prevTop; dzDrawPhoto(); return;
+    const sc = el.querySelector('.sheet'); if (sc) sc.scrollTop = prevTop; dzDrawPhoto(); cutMount(); if (S.designer.useFree) frMount(); return;
   }
   el.dataset.mode = '';
   if (S.builder) { el.hidden = false; el.innerHTML = builderHtml(); const sc = el.querySelector('.sheet'); if (sc) sc.scrollTop = prevTop; return; }
@@ -2006,6 +2028,7 @@ function openDesigner(piece, afterSave) {
   if (piece) {
     const d = piece.design ? Object.assign({}, piece.design) : designDefaults(subOf(piece), { color: piece.color });
     S.designer = { mode: 'edit', id: piece.id, d, name: piece.name, photo: null, keepPhoto: piece.photo || '', savePhoto: true, hadIcon: !!piece.icon, pick: null, msg: '', afterSave };
+    if (piece.icon) { S.designer.useFree = true; frInit(S.designer); }
   } else S.designer = { mode: 'new', d: designDefaults('sweater'), name: '', photo: null, savePhoto: true, pick: null, msg: '', afterSave };
   renderSheet(true);
 }
@@ -2016,8 +2039,20 @@ function designerHtml() {
   const pickName = { color: 'cor principal', color2: 'segunda cor', color3: 'cor de detalhe' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-dz-cancel aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="dz-h">'
     + '<div class="sheet-head"><h2 id="dz-h">' + (Z.mode === 'edit' ? 'Editar desenho' : 'Nova peça') + '</h2><button class="x" data-dz-cancel aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
-  if (Z.mode === 'edit' && Z.hadIcon) h += '<p class="note" style="font-size:13px">Esta peça tem um desenho importado mais detalhado. Se guardares, passa a ter o desenho deste editor.</p>';
+  h += '<div class="chips dz-modes"><button class="chip" data-dz-mode="param" aria-pressed="' + !Z.useFree + '">Modelo rápido</button><button class="chip" data-dz-mode="free" aria-pressed="' + !!Z.useFree + '">Desenho livre</button></div>';
+  if (Z.useFree) {
+    h += '<p class="status" style="font-size:13px;margin-top:-4px">Liberdade total: mexe em qualquer parte, desenha formas, linhas e texto por cima. ' + (Z.mode === 'edit' && Z.hadIcon ? 'Começa no desenho atual da peça.' : 'Começa no modelo da categoria; podes limpar tudo e desenhar do zero.') + '</p>';
+    h += '<label class="field" for="dz-name">Nome<input id="dz-name" type="text" value="' + esc(Z.name) + '" placeholder="Ex.: Sapatilhas brancas e verdes"></label>';
+    h += '<div class="stack" style="gap:8px"><h3>Categoria</h3><div class="chips" style="flex-wrap:wrap">' + SUBS.map((x) => '<button class="chip" data-dz-sub="' + x.id + '" aria-pressed="' + (d.sub === x.id) + '">' + x.label + '</button>').join('') + '</div></div>';
+    h += frHtml(Z);
+    h += '<div class="stack" style="gap:6px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Cor principal</h3><span class="swatch" style="background:' + esc(d.color || '#FFFFFF') + '"></span></div><p class="status" style="font-size:12px;margin:0">Conta para o índice de estilo e para as propostas.</p><div class="swrow">'
+      + SWATCHES.map((c) => '<button class="sw" data-dz-color="color" data-dz-val="' + c + '" aria-label="' + c + '" aria-pressed="' + ((d.color || '').toUpperCase() === c) + '" style="background:' + c + '"></button>').join('')
+      + '<label class="sw sw-custom" title="Outra cor"><input type="color" id="dz-color" value="' + (d.color || '#888888') + '" data-dz-colorinput="color" aria-label="Escolher outra cor"></label></div></div>';
+  }
+  if (Z.useFree) {} else {
+  if (Z.mode === 'edit' && Z.hadIcon) h += '<p class="note" style="font-size:13px">Esta peça tem um desenho importado mais detalhado. Se guardares no modelo rápido, passa a ter o desenho do modelo. Para o manter e alterar, usa o Desenho livre.</p>';
   h += '<div class="dz-preview dz-sticky"><img id="dz-prev" src="' + svgUri(genSvg(d, false)) + '" alt="Pré-visualização">' + (d.sub === 'outer' ? '<img id="dz-prev-open" src="' + svgUri(genSvg(d, true)) + '" alt="Versão aberta">' : '') + '</div>';
+  }
   // photo
   h += '<div class="stack" style="gap:8px" id="dz-photo-sec"><h3>Foto da peça</h3>';
   if (Z.photo) {
@@ -2028,9 +2063,11 @@ function designerHtml() {
       + '<label class="field" for="dz-bright">Brilho<input id="dz-bright" type="range" min="-50" max="50" step="1" value="' + Z.photo.bright + '" data-dz-adj="bright"></label>'
       + '<label class="field" for="dz-temp">Temperatura (azul ↔ amarelo)<input id="dz-temp" type="range" min="-50" max="50" step="1" value="' + Z.photo.temp + '" data-dz-adj="temp"></label>'
       + '<label class="field" for="dz-tint">Tom (verde ↔ magenta)<input id="dz-tint" type="range" min="-50" max="50" step="1" value="' + Z.photo.tint + '" data-dz-adj="tint"></label>'
-      + '<label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" id="dz-savephoto"' + (Z.savePhoto ? ' checked' : '') + '> Guardar esta foto na ficha da peça</label>';
+      + '<label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" id="dz-savephoto"' + (Z.savePhoto ? ' checked' : '') + '> Guardar esta foto na ficha da peça' + (Z.cut && Z.cut.alpha ? ' (já recortada)' : '') + '</label>'
+      + cutHtml(Z);
   } else h += '<p class="status" style="font-size:13px">Opcional. Serve para tirar as cores e para guardar na ficha.</p>';
   h += '<button class="btn" data-dz-photo>' + (Z.photo || Z.keepPhoto ? 'Trocar foto' : 'Juntar foto') + '</button></div>';
+  if (Z.useFree) return h + dzFoot(Z);
   // basics
   h += '<label class="field" for="dz-name">Nome<input id="dz-name" type="text" value="' + esc(Z.name) + '" placeholder="Ex.: Hoodie verde-oliva"></label>';
   h += '<div class="stack" style="gap:8px"><h3>Categoria</h3><div class="chips" style="flex-wrap:wrap">' + SUBS.map((s) => '<button class="chip" data-dz-sub="' + s.id + '" aria-pressed="' + (d.sub === s.id) + '">' + s.label + '</button>').join('') + '</div></div>';
@@ -2040,6 +2077,10 @@ function designerHtml() {
     + '<label class="sw sw-custom" title="Outra cor"><input type="color" id="dz-' + key + '" value="' + (d[key] || '#888888') + '" data-dz-colorinput="' + key + '" aria-label="Escolher outra cor"></label></div></div>';
   h += '<div class="stack" style="gap:14px"><h3 style="font-size:16px">Cores</h3><p class="status" style="font-size:13px;margin-top:-8px">O botão da câmara tira a cor de uma foto.</p>' + colorRow('color') + colorRow('color2') + colorRow('color3') + '</div>';
   Object.keys(o).forEach((k) => { if (SHOW_IF[k] && !SHOW_IF[k](d)) return; h += '<div class="stack" style="gap:6px"><h3>' + DLABELS[k] + '</h3><div class="chips" style="flex-wrap:wrap">' + o[k].map(([v, l]) => chip(k, v, l)).join('') + '</div></div>'; });
+  return h + dzFoot(Z);
+}
+function dzFoot(Z) {
+  let h = '';
   if (Z.msg) h += '<p class="status err" role="status">' + esc(Z.msg) + '</p>';
   h += '<div class="row"><button class="btn" data-dz-cancel>Cancelar</button><button class="btn primary" data-dz-save' + (Z.saving ? ' disabled' : '') + '>' + (Z.saving ? 'A guardar…' : 'Guardar peça') + '</button></div>';
   return h + '</section></div>';
@@ -2061,7 +2102,7 @@ function dzDrawPhoto() {
   const gr = P.gains[0] * br * (1 + t) * (1 + tn), gg = P.gains[1] * br * (1 - 2 * tn), gb = P.gains[2] * br * (1 - t) * (1 + tn);
   for (let i = 0; i < px.length; i += 4) { px[i] = Math.min(255, px[i] * gr); px[i + 1] = Math.min(255, px[i + 1] * gg); px[i + 2] = Math.min(255, px[i + 2] * gb); }
   ctx.putImageData(im, 0, 0);
-  P.clean = ctx.getImageData(0, 0, cv.width, cv.height);
+  P.clean = ctx.getImageData(0, 0, cv.width, cv.height); P.url = null;
   if (Z.mark) { const r = Math.max(10, cv.width / 40); ctx.lineWidth = Math.max(3, r / 4); ctx.strokeStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(Z.mark.x, Z.mark.y, r, 0, 7); ctx.stroke(); ctx.strokeStyle = '#111111'; ctx.lineWidth = Math.max(1.5, r / 8); ctx.beginPath(); ctx.arc(Z.mark.x, Z.mark.y, r + ctx.lineWidth * 1.5, 0, 7); ctx.stroke(); }
 }
 function dzAvg(x, y, R) {
@@ -2094,7 +2135,7 @@ async function dzLoadPhoto(file) {
   if (!file || !S.designer) return;
   try {
     const bm = await createImageBitmap(file); const Z = S.designer;
-    Z.photo = { bitmap: bm, gains: [1, 1, 1], bright: 0, temp: 0, tint: 0 }; Z.mark = null; Z.lastPick = null;
+    Z.photo = { bitmap: bm, gains: [1, 1, 1], bright: 0, temp: 0, tint: 0 }; Z.mark = null; Z.lastPick = null; Z.cut = null;
     if (Z.pendingPick) { Z.pick = Z.pendingPick; Z.pendingPick = null; } else Z.pick = 'wb';
     renderSheet(true);
     const sec = document.getElementById('dz-photo-sec'); if (sec) sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -2108,15 +2149,26 @@ async function dzSave() {
   try {
     let photo = Z.keepPhoto || '';
     if (Z.photo && Z.savePhoto && assets) {
-      const P = Z.photo, c2 = document.createElement('canvas'); c2.width = P.clean.width; c2.height = P.clean.height; c2.getContext('2d').putImageData(P.clean, 0, 0);
-      const b = await new Promise((res) => c2.toBlob(res, 'image/jpeg', 0.88));
-      if (b) { const up = await assets.upload(b, { type: 'image/jpeg' }); photo = up.id; }
+      const P = Z.photo, cut = Z.cut && Z.cut.alpha ? cutCanvasOut(Z) : null;
+      let b;
+      if (cut) b = await new Promise((res) => cut.toBlob(res, 'image/webp', 0.85)); // Safari falls back to PNG: both keep the transparency
+      else { const c2 = document.createElement('canvas'); c2.width = P.clean.width; c2.height = P.clean.height; c2.getContext('2d').putImageData(P.clean, 0, 0); b = await new Promise((res) => c2.toBlob(res, 'image/jpeg', 0.88)); }
+      if (b) { const up = await assets.upload(b, { type: b.type || 'image/jpeg' }); photo = up.id; }
     }
     const d = Object.assign({}, Z.d);
     const data = { name: Z.name.trim(), cat: d.sub, color: d.color, design: d, tags: designTags(d), photo, pair: d.sub === 'shoe' && d.type === 'chinelo', source: 'Desenhado por mim' };
     let id = Z.id;
-    if (Z.mode === 'edit') { const old = pieceById(id) || {}; if (old.icon) { data.oldIcon = old.icon; data.oldOpenIcon = old.openIcon || ''; } data.icon = ''; data.openIcon = ''; await db.doc('pieces/' + id).update(data); }
-    else { data.addedAt = new Date().toISOString(); const ref = await db.collection('pieces').add(data); id = ref.id; }
+    const old = Z.mode === 'edit' ? pieceById(id) || {} : {};
+    if (Z.useFree && Z.free && !Z.free.loading) { // my own drawing becomes the piece's icon (and the open one, for coats)
+      const svgUp = async (inner) => (await assets.upload(new Blob([frSvg(inner)], { type: 'image/svg+xml' }), { type: 'image/svg+xml' })).id;
+      data.icon = await svgUp(Z.free.src.closed);
+      data.openIcon = d.sub === 'outer' ? await svgUp(Z.free.src.open || Z.free.src.closed) : '';
+      data.free = true;
+      if (old.tags && old.tags.length) data.tags = old.tags;
+      if (old.icon) { data.oldIcon = old.icon; data.oldOpenIcon = old.openIcon || ''; }
+      if (Z.mode === 'edit') await db.doc('pieces/' + id).update(data);
+    } else if (Z.mode === 'edit') { if (old.icon) { data.oldIcon = old.icon; data.oldOpenIcon = old.openIcon || ''; } data.icon = ''; data.openIcon = ''; data.free = false; await db.doc('pieces/' + id).update(data); }
+    if (Z.mode !== 'edit') { data.addedAt = new Date().toISOString(); const ref = await db.collection('pieces').add(data); id = ref.id; }
     const after = Z.afterSave; S.designer = null;
     if (after) after(id); else { S.open = id; }
     renderSheet(true);
@@ -2128,7 +2180,12 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   const keepName = () => { const n = document.getElementById('dz-name'); if (n) Z.name = n.value; };
   if (t.hasAttribute('data-dz-cancel')) { const after = Z.afterSave; S.designer = null; if (after) after(null); renderSheet(true); return; }
-  if (t.dataset.dzSub) { keepName(); Z.d = designDefaults(t.dataset.dzSub, Z.d); renderSheet(true); return; }
+  if (t.dataset.dzMode) { keepName(); Z.useFree = t.dataset.dzMode === 'free'; if (Z.useFree && !Z.free) frInit(Z); renderSheet(true); return; }
+  if (t.dataset.dzSub) {
+    keepName(); Z.d = designDefaults(t.dataset.dzSub, Z.d);
+    if (Z.free) { if (Z.d.sub === 'outer' && !Z.free.src.open) Z.free.src.open = Z.free.src.closed; if (Z.d.sub !== 'outer') Z.free.view = 'closed'; }
+    renderSheet(true); return;
+  }
   if (t.dataset.dzOpt) { keepName(); Z.d[t.dataset.dzOpt] = t.dataset.dzVal; renderSheet(true); return; }
   if (t.dataset.dzColor) { keepName(); Z.d[t.dataset.dzColor] = t.dataset.dzVal; renderSheet(true); return; }
   if (t.dataset.dzPick) { keepName(); Z.pick = Z.pick === t.dataset.dzPick ? null : t.dataset.dzPick; renderSheet(true); return; }
@@ -2154,6 +2211,478 @@ document.addEventListener('change', (ev) => {
   if (el.id === 'dz-savephoto') { Z.savePhoto = el.checked; return; }
   if (el.dataset && el.dataset.dzColorinput) { const n = document.getElementById('dz-name'); if (n) Z.name = n.value; renderSheet(true); }
 });
+
+// ---------- desenho livre: liberdade total sobre o SVG da peça ----------
+// The drawing is kept as the inner markup of a 400×400 SVG (F.src.closed / F.src.open for coats). Tools act on
+// the live <svg id="fr-svg">; every finished action is serialized back (frCommit) so undo/redo is a string stack.
+const FR_SKIP = new Set(['defs', 'clipPath', 'clippath', 'linearGradient', 'lineargradient', 'radialGradient', 'radialgradient', 'mask', 'pattern', 'style', 'title', 'desc', 'metadata', 'filter']);
+const FR_TOOLS = [['select', 'Selecionar'], ['pen', 'Lápis'], ['poly', 'Por pontos'], ['line', 'Linha'], ['rect', 'Retângulo'], ['ellipse', 'Elipse'], ['text', 'Texto'], ['bucket', 'Balde'], ['pan', 'Mover vista']];
+const frXS = (n) => new XMLSerializer().serializeToString(n).replace(/ xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, '');
+function frParse(svgText) {
+  try {
+    const root = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+    if (!root || root.nodeName !== 'svg') return '';
+    const inner = Array.from(root.childNodes).map((n) => (n.nodeType === 1 ? frXS(n) : '')).join('');
+    const vb = (root.getAttribute('viewBox') || '0 0 400 400').trim().split(/[\s,]+/).map(Number);
+    if (vb.length === 4 && (vb[0] || vb[1] || vb[2] !== 400 || vb[3] !== 400)) { const k = 400 / Math.max(vb[2], vb[3]); return '<g transform="scale(' + k + ') translate(' + -vb[0] + ' ' + -vb[1] + ')">' + inner + '</g>'; }
+    return inner;
+  } catch (e) { return ''; }
+}
+const frSvg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400">' + inner + '</svg>';
+function frInit(Z) {
+  const F = Z.free = { view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
+  const p = Z.mode === 'edit' && pieceById(Z.id);
+  const fromIcon = async (id) => { const u = id && blob(id); if (!u) return ''; try { return frParse(await (await fetch(u)).text()); } catch (e) { return ''; } };
+  (async () => {
+    let a = p && p.icon ? await fromIcon(p.icon) : '';
+    if (!a) a = frParse(genSvg(Z.d, false));
+    let b = '';
+    if (Z.d.sub === 'outer') { b = p && p.openIcon ? await fromIcon(p.openIcon) : ''; if (!b) b = p && p.icon ? a : frParse(genSvg(Z.d, true)); }
+    F.src = { closed: a, open: b }; F.loading = false;
+    if (S.designer === Z) renderSheet(true);
+  })();
+}
+function frItems() { const r = document.getElementById('fr-root'); return r ? Array.from(r.children).filter((n) => !FR_SKIP.has(n.nodeName)) : []; }
+function frPathOf(el) { const r = document.getElementById('fr-root'), path = []; while (el && el !== r) { path.unshift(Array.prototype.indexOf.call(el.parentNode.children, el)); el = el.parentNode; } return el === r ? path : null; }
+function frGet(path) { let el = document.getElementById('fr-root'); if (!el || !path) return null; for (const i of path) { el = el && el.children[i]; } return el || null; }
+function frPt(ev) { const svg = document.getElementById('fr-svg'), m = svg && svg.getScreenCTM(); if (!m) return { x: 0, y: 0 }; const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const q = p.matrixTransform(m.inverse()); return { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 }; }
+function frBox(el) {
+  const svg = document.getElementById('fr-svg'), m = svg.getScreenCTM().inverse(), r = el.getBoundingClientRect(), p = svg.createSVGPoint();
+  p.x = r.left; p.y = r.top; const a = p.matrixTransform(m); p.x = r.right; p.y = r.bottom; const b = p.matrixTransform(m);
+  return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+}
+function frSerialize() { const r = document.getElementById('fr-root'); return r ? Array.from(r.childNodes).map((n) => (n.nodeType === 1 ? frXS(n) : '')).join('') : ''; }
+function frSnap() { const F = S.designer.free; F.hist.push(F.view + '\u0000' + F.src[F.view]); if (F.hist.length > 80) F.hist.shift(); F.fut = []; }
+function frCommit(rerender) { const F = S.designer.free; F.src[F.view] = frSerialize(); if (rerender !== false) renderSheet(true); }
+function frPre(el, t) { el.setAttribute('transform', (t + ' ' + (el.getAttribute('transform') || '')).trim()); }
+function frAttr(F) { return 'fill="' + (F.noFill ? 'none' : F.fill) + '" stroke="' + (F.noStroke ? 'none' : F.stroke) + '" stroke-width="' + F.sw + '" stroke-linecap="round" stroke-linejoin="round"'; }
+function frAdd(markup) { const r = document.getElementById('fr-root'); frSnap(); r.insertAdjacentHTML('beforeend', '<svg xmlns="http://www.w3.org/2000/svg">' + markup + '</svg>'); const tmp = r.lastElementChild, el = tmp.firstElementChild; r.replaceChild(el, tmp); S.designer.free.sel = frPathOf(el); frCommit(); }
+function frSmooth(pts, close) { // points → smooth path (quadratic through midpoints, or Catmull-Rom for few points)
+  if (pts.length < 2) return '';
+  const f = (n) => Math.round(n * 10) / 10;
+  if (pts.length < 3) return 'M' + f(pts[0].x) + ' ' + f(pts[0].y) + ' L' + f(pts[1].x) + ' ' + f(pts[1].y) + (close ? ' Z' : '');
+  const P = close ? [pts[pts.length - 1], ...pts, pts[0], pts[1]] : [pts[0], ...pts, pts[pts.length - 1]];
+  let d = 'M' + f(pts[0].x) + ' ' + f(pts[0].y);
+  for (let i = 1; i < P.length - 2; i++) {
+    const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2];
+    d += ' C' + f(p1.x + (p2.x - p0.x) / 6) + ' ' + f(p1.y + (p2.y - p0.y) / 6) + ' ' + f(p2.x - (p3.x - p1.x) / 6) + ' ' + f(p2.y - (p3.y - p1.y) / 6) + ' ' + f(p2.x) + ' ' + f(p2.y);
+  }
+  return d + (close ? ' Z' : '');
+}
+function frSimplify(pts, tol) { const out = [pts[0]]; for (const p of pts) { const q = out[out.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) >= tol) out.push(p); } if (out[out.length - 1] !== pts[pts.length - 1]) out.push(pts[pts.length - 1]); return out; }
+function frColors() { // the colours already in the drawing, for quick reuse
+  const s = (S.designer.free.src[S.designer.free.view] || '').match(/#[0-9a-fA-F]{6}\b/g) || [];
+  const n = new Map(); s.forEach((c) => { c = c.toUpperCase(); n.set(c, (n.get(c) || 0) + 1); });
+  return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map((x) => x[0]);
+}
+function frHtml(Z) {
+  const F = Z.free, vw = 400 / F.zoom, vx = Math.max(0, Math.min(400 - vw, F.cx - vw / 2)), vy = Math.max(0, Math.min(400 - vw, F.cy - vw / 2));
+  if (F.loading) return '<p class="status">A abrir o desenho…</p>';
+  const under = F.under ? (Z.photo && Z.photo.clean ? (Z.photo.url || (Z.photo.url = (() => { const c = document.createElement('canvas'); c.width = Z.photo.clean.width; c.height = Z.photo.clean.height; c.getContext('2d').putImageData(Z.photo.clean, 0, 0); return c.toDataURL('image/jpeg', 0.8); })())) : Z.keepPhoto ? blob(Z.keepPhoto) : '') : '';
+  const btn = (attr, label, on, extra) => '<button class="chip" ' + attr + (on !== undefined ? ' aria-pressed="' + !!on + '"' : '') + (extra || '') + '>' + label + '</button>';
+  let h = '<div class="fr stack" style="gap:10px">';
+  if (Z.d.sub === 'outer') h += '<div class="chips">' + btn('data-fr-view="closed"', 'Casaco fechado', F.view === 'closed') + btn('data-fr-view="open"', 'Casaco aberto', F.view === 'open') + '</div>';
+  h += '<div class="fr-stage"><svg id="fr-svg" viewBox="' + vx + ' ' + vy + ' ' + vw + ' ' + vw + '" xmlns="http://www.w3.org/2000/svg" class="fr-svg tool-' + F.tool + '">'
+    + '<rect x="0" y="0" width="400" height="400" fill="#FFFFFF" data-fr-bg="1"/>'
+    + (under ? '<image href="' + esc(under) + '" x="0" y="0" width="400" height="400" preserveAspectRatio="xMidYMid meet" opacity="' + F.uop / 100 + '" pointer-events="none"/>' : '')
+    + '<g id="fr-root"' + (under ? ' opacity="' + (1 - F.uop / 200) + '"' : '') + '>' + F.src[F.view] + '</g><g id="fr-ui" pointer-events="none"></g></svg></div>';
+  h += '<div class="chips fr-tools" style="flex-wrap:wrap">' + FR_TOOLS.map(([k, l]) => btn('data-fr-tool="' + k + '"', l, F.tool === k)).join('') + '</div>';
+  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos; no fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
+  h += '<p class="status" style="font-size:13px;margin:0">' + tip[F.tool] + '</p>';
+  if (F.tool === 'poly') h += '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fr-polycancel' + (F.pts && F.pts.length ? '' : ' disabled') + '>Cancelar pontos</button><button class="btn primary" data-fr-polydone' + (F.pts && F.pts.length >= 2 ? '' : ' disabled') + '>Concluir forma (' + (F.pts ? F.pts.length : 0) + ')</button></div>';
+  if (F.tool === 'text') h += '<div class="row" style="flex-wrap:nowrap"><input id="fr-text" type="text" placeholder="Texto" value="' + esc(F.text) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-fs" min="6" max="200" value="' + F.fs + '"></label></div>';
+  if (F.tool === 'pen' || F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="closed"', 'Fechar e pintar a forma', F.closed) + (F.tool === 'poly' ? btn('data-fr-toggle="smooth"', 'Curvas suaves', F.smooth) : '') + '</div>';
+  if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="deep"', 'Escolher partes dentro de grupos', F.deep) + '</div>';
+  // colours
+  const pal = frColors();
+  h += '<div class="fr-colors"><label>Preenchimento<input type="color" id="fr-fill" value="' + F.fill + '"></label>' + btn('data-fr-toggle="noFill"', 'Sem preenchimento', F.noFill)
+    + '<label>Contorno<input type="color" id="fr-stroke" value="' + F.stroke + '"></label>' + btn('data-fr-toggle="noStroke"', 'Sem contorno', F.noStroke)
+    + '<label class="fr-sw">Espessura <b>' + F.sw + '</b><input type="range" id="fr-sw" min="0" max="24" step="0.5" value="' + F.sw + '"></label></div>';
+  if (pal.length) h += '<div class="swrow">' + pal.map((c) => '<button class="sw" data-fr-pal="' + c + '" aria-label="Usar ' + c + '" style="background:' + c + '"></button>').join('') + '</div><p class="status" style="font-size:12px;margin:-4px 0 0">Cores do desenho: toca para a usar no preenchimento (toque longo: contorno).</p>';
+  // selection
+  if (F.sel) {
+    h += '<div class="fr-selbar"><b>Parte escolhida</b><div class="chips" style="flex-wrap:wrap">'
+      + btn('data-fr-act="prev"', '◀ Anterior') + btn('data-fr-act="next"', 'Seguinte ▶') + btn('data-fr-act="fill"', 'Pintar preenchimento') + btn('data-fr-act="stroke"', 'Pintar contorno') + btn('data-fr-act="width"', 'Usar esta espessura') + btn('data-fr-act="copy"', 'Copiar as cores dela')
+      + btn('data-fr-act="front"', 'Para a frente') + btn('data-fr-act="back"', 'Para trás') + btn('data-fr-act="dup"', 'Duplicar') + btn('data-fr-act="flip"', 'Espelhar') + btn('data-fr-act="flipv"', 'Virar ao contrário')
+      + btn('data-fr-act="rotl"', '↺ 15°') + btn('data-fr-act="rotr"', '↻ 15°') + btn('data-fr-act="big"', 'Maior') + btn('data-fr-act="small"', 'Menor')
+      + btn('data-fr-act="wide"', 'Mais larga') + btn('data-fr-act="narrow"', 'Mais estreita') + btn('data-fr-act="tall"', 'Mais alta') + btn('data-fr-act="short"', 'Mais baixa')
+      + btn('data-fr-act="ungroup"', 'Desagrupar') + btn('data-fr-act="del"', 'Apagar', undefined, ' style="color:var(--new-ink)"')
+      + '</div><div class="fr-nudge">' + btn('data-fr-act="l"', '←') + btn('data-fr-act="u"', '↑') + btn('data-fr-act="d"', '↓') + btn('data-fr-act="r"', '→') + '<button class="chip" data-fr-act="none">Largar seleção</button></div></div>';
+  } else h += '<div class="chips">' + btn('data-fr-act="next"', 'Escolher a primeira parte') + '</div>';
+  // view + history
+  h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-zoom="out"', 'Zoom −') + btn('data-fr-zoom="in"', 'Zoom +') + btn('data-fr-zoom="1"', 'Ver tudo') + btn('data-fr-undo', 'Anular', undefined, F.hist.length ? '' : ' disabled') + btn('data-fr-redo', 'Refazer', undefined, F.fut.length ? '' : ' disabled') + '</div>';
+  h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="under"', 'Ver a foto por baixo (para decalcar)', F.under, Z.photo || Z.keepPhoto ? '' : ' disabled') + btn('data-fr-reset', 'Recomeçar do modelo da categoria') + btn('data-fr-clear', 'Limpar tudo') + '</div>';
+  if (F.under) h += '<label class="field" for="fr-uop">Transparência da foto<input id="fr-uop" type="range" min="10" max="90" step="5" value="' + F.uop + '"></label>';
+  return h + '</div>';
+}
+function frMount() {
+  const Z = S.designer, F = Z && Z.free, svg = document.getElementById('fr-svg'); if (!F || !svg) return;
+  const ui = document.getElementById('fr-ui');
+  const sel = frGet(F.sel);
+  if (F.sel && !sel) F.sel = null;
+  if (sel) { const b = frBox(sel), k = 400 / (400 / F.zoom); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>'; }
+  if (F.tool === 'poly' && F.pts && F.pts.length) ui.innerHTML += '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, false) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L')) : '') + '" fill="none" stroke="#1E88E5" stroke-width="2"/>' + F.pts.map((p) => '<circle cx="' + p.x + '" cy="' + p.y + '" r="4" fill="#1E88E5"/>').join('');
+  let drag = null;
+  svg.addEventListener('pointerdown', (ev) => {
+    if (ev.button > 0) return; ev.preventDefault();
+    const p = frPt(ev); svg.setPointerCapture(ev.pointerId);
+    if (F.tool === 'pan') { drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, cx: F.cx, cy: F.cy, k: 400 / F.zoom / svg.getBoundingClientRect().width }; return; }
+    if (F.tool === 'select' || F.tool === 'bucket') {
+      let t = ev.target; if (t.dataset && t.dataset.frBg) t = null;
+      const root = document.getElementById('fr-root'); if (t && !root.contains(t)) t = null;
+      if (t && F.tool === 'bucket') { frSnap(); if (F.noFill) t.setAttribute('stroke', F.stroke); else t.setAttribute('fill', F.fill); t.style && t.style.removeProperty('fill'); frCommit(); return; }
+      if (!t) { F.sel = null; renderSheet(true); return; }
+      let el = t; if (!F.deep) while (el.parentNode !== root) el = el.parentNode;
+      F.sel = frPathOf(el); drag = { kind: 'move', el, p, base: el.getAttribute('transform') || '', moved: false, before: F.src[F.view] };
+      ui.innerHTML = ''; const b = frBox(el); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="2" stroke-dasharray="6 4"/>';
+      return;
+    }
+    if (F.tool === 'poly') return; // points are added on pointerup (a tap)
+    if (F.tool === 'text') { const tx = (document.getElementById('fr-text') || {}).value || F.text; if (!tx.trim()) { toast('Escreve primeiro o texto.'); return; } F.text = tx; frAdd('<text x="' + p.x + '" y="' + p.y + '" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + F.fs + '" text-anchor="middle" fill="' + (F.noFill ? F.stroke : F.fill) + '"' + (F.noStroke ? '' : ' stroke="' + F.stroke + '" stroke-width="' + Math.min(F.sw, 2) + '" paint-order="stroke"') + '>' + esc(tx) + '</text>'); return; }
+    drag = { kind: F.tool, p, pts: [p] };
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    if (!drag) return; const p = frPt(ev);
+    if (drag.kind === 'pan') { F.cx = drag.cx - (ev.clientX - drag.sx) * drag.k; F.cy = drag.cy - (ev.clientY - drag.sy) * drag.k; const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); return; }
+    if (drag.kind === 'move') { const dx = p.x - drag.p.x, dy = p.y - drag.p.y; if (Math.abs(dx) + Math.abs(dy) > 0.6) drag.moved = true; if (drag.moved) { drag.el.setAttribute('transform', ('translate(' + Math.round(dx * 10) / 10 + ' ' + Math.round(dy * 10) / 10 + ') ' + drag.base).trim()); const b = frBox(drag.el); ui.firstChild && (ui.firstChild.setAttribute('x', b.x - 3), ui.firstChild.setAttribute('y', b.y - 3)); } return; }
+    const a = drag.p; let d = '';
+    if (drag.kind === 'pen') { drag.pts.push(p); d = '<path d="M' + drag.pts.map((q) => q.x + ' ' + q.y).join(' L') + '" fill="none" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round"/>'; }
+    if (drag.kind === 'line') d = '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="#1E88E5" stroke-width="2"/>';
+    if (drag.kind === 'rect') d = '<rect x="' + Math.min(a.x, p.x) + '" y="' + Math.min(a.y, p.y) + '" width="' + Math.abs(p.x - a.x) + '" height="' + Math.abs(p.y - a.y) + '" fill="none" stroke="#1E88E5" stroke-width="2"/>';
+    if (drag.kind === 'ellipse') d = '<ellipse cx="' + (a.x + p.x) / 2 + '" cy="' + (a.y + p.y) / 2 + '" rx="' + Math.abs(p.x - a.x) / 2 + '" ry="' + Math.abs(p.y - a.y) / 2 + '" fill="none" stroke="#1E88E5" stroke-width="2"/>';
+    drag.end = p; ui.innerHTML = d;
+  });
+  const end = (ev) => {
+    const g = drag; drag = null;
+    if (F.tool === 'poly' && ev.type === 'pointerup') { const p = frPt(ev); F.pts = (F.pts || []).concat([p]); renderSheet(true); return; }
+    if (!g) return;
+    if (g.kind === 'pan') return;
+    if (g.kind === 'move') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; F.sel = frPathOf(g.el); frCommit(); } else renderSheet(true); return; }
+    const a = g.p, p = g.end; const r1 = (n) => Math.round(n * 10) / 10;
+    if (g.kind === 'pen') { if (g.pts.length < 2) { ui.innerHTML = ''; return; } const pts = frSimplify(g.pts, 3); frAdd('<path d="' + frSmooth(pts, F.closed) + '" ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return; }
+    if (!p || Math.hypot(p.x - a.x, p.y - a.y) < 2) { ui.innerHTML = ''; return; }
+    if (g.kind === 'line') frAdd('<line x1="' + a.x + '" y1="' + a.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="' + (F.noStroke ? F.fill : F.stroke) + '" stroke-width="' + Math.max(1, F.sw) + '" stroke-linecap="round"/>');
+    if (g.kind === 'rect') frAdd('<rect x="' + r1(Math.min(a.x, p.x)) + '" y="' + r1(Math.min(a.y, p.y)) + '" width="' + r1(Math.abs(p.x - a.x)) + '" height="' + r1(Math.abs(p.y - a.y)) + '" rx="' + r1(Math.min(Math.abs(p.x - a.x), Math.abs(p.y - a.y)) * 0.12) + '" ' + frAttr(F) + '/>');
+    if (g.kind === 'ellipse') frAdd('<ellipse cx="' + r1((a.x + p.x) / 2) + '" cy="' + r1((a.y + p.y) / 2) + '" rx="' + r1(Math.abs(p.x - a.x) / 2) + '" ry="' + r1(Math.abs(p.y - a.y) / 2) + '" ' + frAttr(F) + '/>');
+  };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', (ev) => { drag = null; ui.innerHTML = ''; });
+}
+function frAct(a) {
+  const Z = S.designer, F = Z.free, items = frItems();
+  if (a === 'none') { F.sel = null; renderSheet(true); return; }
+  if (a === 'next' || a === 'prev') {
+    const cur = frGet(F.sel), top = cur ? (F.deep ? cur : items.find((x) => x === cur || x.contains(cur))) : null;
+    const i = top ? items.indexOf(top) : -1, n = items.length; if (!n) return;
+    F.sel = frPathOf(items[a === 'next' ? (i + 1) % n : (i - 1 + n) % n]); renderSheet(true); return;
+  }
+  const el = frGet(F.sel); if (!el) return;
+  if (a === 'copy') { const f = el.getAttribute('fill'), s = el.getAttribute('stroke'), w = el.getAttribute('stroke-width'); if (f && /^#[0-9a-f]{6}$/i.test(f)) { F.fill = f.toUpperCase(); F.noFill = false; } else if (f === 'none') F.noFill = true; if (s && /^#[0-9a-f]{6}$/i.test(s)) { F.stroke = s.toUpperCase(); F.noStroke = false; } else if (s === 'none') F.noStroke = true; if (w && !isNaN(+w)) F.sw = +w; renderSheet(true); return; }
+  frSnap();
+  const b = frBox(el), c = b.cx + ' ' + b.cy, ac = (t) => frPre(el, 'translate(' + c + ') ' + t + ' translate(' + -b.cx + ' ' + -b.cy + ')');
+  const step = 2 / F.zoom;
+  switch (a) {
+    case 'fill': el.setAttribute('fill', F.noFill ? 'none' : F.fill); break;
+    case 'stroke': el.setAttribute('stroke', F.noStroke ? 'none' : F.stroke); if (!F.noStroke && !el.getAttribute('stroke-width')) el.setAttribute('stroke-width', F.sw); break;
+    case 'width': el.setAttribute('stroke-width', F.sw); break;
+    case 'front': el.parentNode.appendChild(el); break;
+    case 'back': { const first = Array.from(el.parentNode.children).find((n) => !FR_SKIP.has(n.nodeName)); if (first && first !== el) el.parentNode.insertBefore(el, first); break; }
+    case 'dup': { const cp = el.cloneNode(true); el.parentNode.insertBefore(cp, el.nextSibling); frPre(cp, 'translate(12 12)'); F.sel = frPathOf(cp); break; }
+    case 'flip': ac('scale(-1 1)'); break;
+    case 'flipv': ac('scale(1 -1)'); break;
+    case 'rotl': ac('rotate(-15)'); break;
+    case 'rotr': ac('rotate(15)'); break;
+    case 'big': ac('scale(1.1)'); break;
+    case 'small': ac('scale(0.9091)'); break;
+    case 'wide': ac('scale(1.1 1)'); break;
+    case 'narrow': ac('scale(0.9091 1)'); break;
+    case 'tall': ac('scale(1 1.1)'); break;
+    case 'short': ac('scale(1 0.9091)'); break;
+    case 'l': frPre(el, 'translate(' + -step + ' 0)'); break;
+    case 'r': frPre(el, 'translate(' + step + ' 0)'); break;
+    case 'u': frPre(el, 'translate(0 ' + -step + ')'); break;
+    case 'd': frPre(el, 'translate(0 ' + step + ')'); break;
+    case 'ungroup': {
+      if (el.nodeName !== 'g') { F.hist.pop(); toast('Esta parte não é um grupo.'); return; }
+      const tr = el.getAttribute('transform') || '', cp = el.getAttribute('clip-path'), op = el.getAttribute('opacity'), kids = Array.from(el.children);
+      const inherit = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'font-family', 'font-size', 'font-weight'];
+      kids.forEach((k) => {
+        if (FR_SKIP.has(k.nodeName)) { el.parentNode.insertBefore(k, el); return; }
+        if (tr) k.setAttribute('transform', (tr + ' ' + (k.getAttribute('transform') || '')).trim());
+        if (cp && !k.getAttribute('clip-path')) k.setAttribute('clip-path', cp);
+        if (op) k.setAttribute('opacity', String((+(k.getAttribute('opacity') || 1)) * +op));
+        inherit.forEach((n) => { const v = el.getAttribute(n); if (v && !k.getAttribute(n)) k.setAttribute(n, v); });
+        el.parentNode.insertBefore(k, el);
+      });
+      F.sel = kids.length ? frPathOf(kids.find((k) => !FR_SKIP.has(k.nodeName)) || kids[0]) : null; el.remove(); break;
+    }
+    case 'del': el.remove(); F.sel = null; break;
+  }
+  frCommit();
+}
+function frUndo(redo) {
+  const F = S.designer.free, from = redo ? F.fut : F.hist, to = redo ? F.hist : F.fut; if (!from.length) return;
+  const [view, src] = from.pop().split('\u0000'); to.push(view + '\u0000' + F.src[view]); F.src[view] = src; F.view = view; F.sel = null; renderSheet(true);
+}
+document.addEventListener('click', (ev) => {
+  const Z = S.designer; if (!Z || !Z.free || !Z.useFree) return;
+  const t = ev.target.closest('button'); if (!t) return; const F = Z.free;
+  if (t.dataset.frTool) { F.tool = t.dataset.frTool; if (F.tool !== 'poly') F.pts = null; renderSheet(true); return; }
+  if (t.dataset.frView) { F.view = t.dataset.frView; F.sel = null; renderSheet(true); return; }
+  if (t.dataset.frToggle) { const k = t.dataset.frToggle; F[k] = !F[k]; renderSheet(true); return; }
+  if (t.dataset.frAct) { frAct(t.dataset.frAct); return; }
+  if (t.dataset.frPal) { if (F.longPal) { F.longPal = false; return; } F.fill = t.dataset.frPal; F.noFill = false; renderSheet(true); return; }
+  if (t.dataset.frZoom) { const z = t.dataset.frZoom; F.zoom = z === '1' ? 1 : Math.max(1, Math.min(8, F.zoom * (z === 'in' ? 1.6 : 1 / 1.6))); const sel = frGet(F.sel); if (sel && z === 'in') { const b = frBox(sel); F.cx = b.cx; F.cy = b.cy; } if (F.zoom === 1) { F.cx = 200; F.cy = 200; } renderSheet(true); return; }
+  if (t.hasAttribute('data-fr-undo')) { frUndo(false); return; }
+  if (t.hasAttribute('data-fr-redo')) { frUndo(true); return; }
+  if (t.hasAttribute('data-fr-polycancel')) { F.pts = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-fr-polydone')) { const pts = F.pts || []; F.pts = null; if (pts.length < 2) return; const d = F.smooth ? frSmooth(pts, F.closed) : 'M' + pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : ''); frAdd('<path d="' + d + '" ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return; }
+  if (t.hasAttribute('data-fr-reset')) { frSnap(); F.src[F.view] = frParse(genSvg(Z.d, F.view === 'open')); F.sel = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-fr-clear')) { frSnap(); F.src[F.view] = ''; F.sel = null; renderSheet(true); return; }
+});
+document.addEventListener('contextmenu', (ev) => { const t = ev.target.closest && ev.target.closest('[data-fr-pal]'); if (!t || !S.designer || !S.designer.free) return; ev.preventDefault(); const F = S.designer.free; F.stroke = t.dataset.frPal; F.noStroke = false; F.longPal = true; setTimeout(() => { F.longPal = false; }, 600); renderSheet(true); });
+document.addEventListener('input', (ev) => {
+  const Z = S.designer, el = ev.target; if (!Z || !Z.free) return; const F = Z.free;
+  if (el.id === 'fr-fill') { F.fill = el.value.toUpperCase(); F.noFill = false; }
+  else if (el.id === 'fr-stroke') { F.stroke = el.value.toUpperCase(); F.noStroke = false; }
+  else if (el.id === 'fr-sw') { F.sw = +el.value; const b = el.parentNode.querySelector('b'); if (b) b.textContent = el.value; }
+  else if (el.id === 'fr-text') F.text = el.value;
+  else if (el.id === 'fr-fs') F.fs = Math.max(6, Math.min(200, +el.value || 34));
+  else if (el.id === 'fr-uop') { F.uop = +el.value; const im = document.querySelector('#fr-svg image'); if (im) im.setAttribute('opacity', F.uop / 100); }
+});
+document.addEventListener('keydown', (e) => {
+  const Z = S.designer; if (!Z || !Z.free || !Z.useFree || /input|textarea/i.test((e.target || {}).nodeName || '')) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && Z.free.sel) { e.preventDefault(); frAct('del'); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); frUndo(e.shiftKey); }
+  else if (Z.free.sel && /^Arrow/.test(e.key)) { e.preventDefault(); frAct({ ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd' }[e.key]); }
+});
+
+// ---------- recorte assistido da foto + caricatura proposta ----------
+// I draw a box around the piece and, if needed, brush «é peça» / «não é peça»; a colour model (k-means in Lab,
+// a few GrabCut-like rounds, smoothing and clean-up) does the rest. The cut-out is then turned into two
+// proposals: a vector caricature traced from the photo (posterized colours) and the parametric model in its colours.
+function rgb2lab(r, g, b) {
+  const f = (c) => { c /= 255; return c > 0.04045 ? Math.pow((c + 0.055) / 1.055, 2.4) : c / 12.92; };
+  const R = f(r), G = f(g), B = f(b);
+  let x = (R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047, y = R * 0.2126 + G * 0.7152 + B * 0.0722, z = (R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883;
+  const h = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116); x = h(x); y = h(y); z = h(z);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+function kmeans(S, k, it) { // S: array of [l,a,b]
+  if (!S.length) return [];
+  k = Math.min(k, S.length); let C = []; for (let i = 0; i < k; i++) C.push(S[Math.floor((i + 0.5) * S.length / k)].slice());
+  for (let t = 0; t < (it || 8); t++) {
+    const acc = C.map(() => [0, 0, 0, 0]);
+    for (const s of S) { let bi = 0, bd = 1e9; for (let j = 0; j < C.length; j++) { const c = C[j], d = (s[0] - c[0]) ** 2 + (s[1] - c[1]) ** 2 + (s[2] - c[2]) ** 2; if (d < bd) { bd = d; bi = j; } } const a = acc[bi]; a[0] += s[0]; a[1] += s[1]; a[2] += s[2]; a[3]++; }
+    C = acc.map((a, j) => (a[3] ? [a[0] / a[3], a[1] / a[3], a[2] / a[3], a[3]] : C[j]));
+  }
+  return C;
+}
+function gmm(S, k) { // k-means → weighted diagonal Gaussians
+  const C = kmeans(S, k, 6); if (!C.length) return [];
+  const acc = C.map(() => [0, 0, 0, 0]);
+  for (const s of S) { const j = nearest(C, s[0], s[1], s[2])[1], c = C[j], a = acc[j]; a[0] += (s[0] - c[0]) ** 2; a[1] += (s[1] - c[1]) ** 2; a[2] += (s[2] - c[2]) ** 2; a[3]++; }
+  return C.map((c, j) => { const a = acc[j], n = Math.max(1, a[3]), v = [Math.max(6, a[0] / n), Math.max(6, a[1] / n), Math.max(6, a[2] / n)]; return { m: c, v, lw: Math.log(Math.max(1e-6, a[3] / S.length)) - 0.5 * Math.log(v[0] * v[1] * v[2]) }; });
+}
+function gmmLog(G, lab, i) { if (!G.length) return -50; let best = -1e9, sum = 0; const r = G.map((g) => { const l = g.lw - 0.5 * ((lab[i * 3] - g.m[0]) ** 2 / g.v[0] + (lab[i * 3 + 1] - g.m[1]) ** 2 / g.v[1] + (lab[i * 3 + 2] - g.m[2]) ** 2 / g.v[2]); if (l > best) best = l; return l; }); r.forEach((l) => { sum += Math.exp(l - best); }); return best + Math.log(sum); }
+const nearest = (C, l, a, b) => { let bd = 1e9, bi = 0; for (let j = 0; j < C.length; j++) { const c = C[j], d = (l - c[0]) ** 2 + (a - c[1]) ** 2 + (b - c[2]) ** 2; if (d < bd) { bd = d; bi = j; } } return [bd, bi]; };
+function cutState(Z) { return Z.cut || (Z.cut = { rect: null, marks: [], tool: 'rect', size: 16, alpha: null, props: null, busy: false, rot: 0 }); }
+function boxBlur(a, W, H, r) {
+  const t = new Float32Array(a.length), o = new Float32Array(a.length);
+  for (let y = 0; y < H; y++) { let s = 0; for (let x = -r; x <= r; x++) s += a[y * W + Math.min(W - 1, Math.max(0, x))]; for (let x = 0; x < W; x++) { t[y * W + x] = s / (2 * r + 1); s += a[y * W + Math.min(W - 1, x + r + 1)] - a[y * W + Math.max(0, x - r)]; } }
+  for (let x = 0; x < W; x++) { let s = 0; for (let y = -r; y <= r; y++) s += t[Math.min(H - 1, Math.max(0, y)) * W + x]; for (let y = 0; y < H; y++) { o[y * W + x] = s / (2 * r + 1); s += t[Math.min(H - 1, y + r + 1) * W + x] - t[Math.max(0, y - r) * W + x]; } }
+  return o;
+}
+function segment(Z) {
+  const P = Z.photo, im = P.clean, W0 = im.width, H0 = im.height, C = cutState(Z), k = Math.min(1, 320 / Math.max(W0, H0)), W = Math.round(W0 * k), H = Math.round(H0 * k);
+  const c0 = document.createElement('canvas'); c0.width = W0; c0.height = H0; c0.getContext('2d').putImageData(im, 0, 0);
+  const c1 = document.createElement('canvas'); c1.width = W; c1.height = H; const x1 = c1.getContext('2d'); x1.drawImage(c0, 0, 0, W, H);
+  const px = x1.getImageData(0, 0, W, H).data, N = W * H, lab = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { const l = rgb2lab(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]); lab[i * 3] = l[0]; lab[i * 3 + 1] = l[1]; lab[i * 3 + 2] = l[2]; }
+  const R = C.rect ? { x: Math.round(Math.min(C.rect.x0, C.rect.x1) * k), y: Math.round(Math.min(C.rect.y0, C.rect.y1) * k), x2: Math.round(Math.max(C.rect.x0, C.rect.x1) * k), y2: Math.round(Math.max(C.rect.y0, C.rect.y1) * k) } : { x: Math.round(W * 0.03), y: Math.round(H * 0.03), x2: Math.round(W * 0.97), y2: Math.round(H * 0.97) };
+  const hard = new Uint8Array(N); // 1 = peça, 2 = fundo
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x < R.x || x > R.x2 || y < R.y || y > R.y2) hard[y * W + x] = 2;
+  C.marks.forEach((m) => { const r = Math.max(1, m.r * k); m.pts.forEach((p, j) => { const q = m.pts[Math.max(0, j - 1)]; const steps = Math.max(1, Math.ceil(Math.hypot(p.x - q.x, p.y - q.y) * k / Math.max(1, r / 2))); for (let s = 0; s <= steps; s++) { const cx = (q.x + (p.x - q.x) * s / steps) * k, cy = (q.y + (p.y - q.y) * s / steps) * k; for (let yy = Math.floor(cy - r); yy <= cy + r; yy++) for (let xx = Math.floor(cx - r); xx <= cx + r; xx++) if (xx >= 0 && yy >= 0 && xx < W && yy < H && (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r) hard[yy * W + xx] = m.kind === 'fg' ? 1 : 2; } }); });
+  const brushF = [], brushB = [];
+  for (let i = 0; i < N; i += 2) { if (!hard[i]) continue; const x = i % W, y = (i / W) | 0; if (hard[i] === 1) brushF.push([lab[i * 3], lab[i * 3 + 1], lab[i * 3 + 2]]); else if (x >= R.x && x <= R.x2 && y >= R.y && y <= R.y2) brushB.push([lab[i * 3], lab[i * 3 + 1], lab[i * 3 + 2]]); }
+  let p = new Float32Array(N); const cxr = (R.x + R.x2) / 2, cyr = (R.y + R.y2) / 2, rw = (R.x2 - R.x) / 2, rh = (R.y2 - R.y) / 2;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; p[i] = hard[i] === 1 ? 1 : hard[i] === 2 ? 0 : (Math.abs(x - cxr) < rw * 0.6 && Math.abs(y - cyr) < rh * 0.6 ? 0.8 : 0.5); }
+  const step = Math.max(1, Math.round(Math.sqrt(N / 6000)));
+  let beta2 = 0, nb = 0; for (let i = 0; i < N - W - 1; i += 3) { beta2 += (lab[i * 3] - lab[(i + 1) * 3]) ** 2 + (lab[i * 3 + 1] - lab[(i + 1) * 3 + 1]) ** 2 + (lab[i * 3 + 2] - lab[(i + 1) * 3 + 2]) ** 2; nb++; } beta2 = Math.max(1, beta2 / Math.max(1, nb));
+  for (let t = 0; t < 5; t++) {
+    const F = [], B = [];
+    for (let i = 0; i < N; i += step) { const s = [lab[i * 3], lab[i * 3 + 1], lab[i * 3 + 2]]; if (hard[i] === 1 || (hard[i] !== 2 && p[i] > (t ? 0.5 : 0.7))) F.push(s); else if (hard[i] === 2 || (t && p[i] < 0.5)) B.push(s); }
+    // what I painted counts a lot: its colours go to that side and are taken out of the other one
+    if (brushB.length) { const CB0 = kmeans(brushB, 8, 6); for (let r = 0; r < 4; r++) B.push(...brushB); for (let j = F.length - 1; j >= 0; j--) { const s = F[j]; if (nearest(CB0, s[0], s[1], s[2])[0] < 225 && !(brushF.length && nearest(kmeans(brushF, 2, 3), s[0], s[1], s[2])[0] < 64)) F.splice(j, 1); } }
+    if (brushF.length) for (let r = 0; r < 4; r++) F.push(...brushF);
+    if (!B.length) for (let x = 0; x < W; x += 2) { for (const y of [0, H - 1]) { const i = y * W + x; B.push([lab[i * 3], lab[i * 3 + 1], lab[i * 3 + 2]]); } }
+    const GF = gmm(F, 6), GB = gmm(B, 6), D = new Float32Array(N);
+    for (let i = 0; i < N; i++) { if (hard[i]) { D[i] = hard[i] === 1 ? 8 : -8; continue; } D[i] = Math.max(-8, Math.min(8, gmmLog(GF, lab, i) - gmmLog(GB, lab, i))); }
+    // smoothing: neighbours pull together, less so across strong colour edges (an MRF solved with a few ICM sweeps)
+    let m = new Float32Array(N); for (let i = 0; i < N; i++) m[i] = D[i] > 0 ? 1 : 0;
+    for (let it = 0; it < 6; it++) {
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; if (hard[i]) { m[i] = hard[i] === 1 ? 1 : 0; continue; }
+        let e = D[i];
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const j = yy * W + xx, dc = (lab[i * 3] - lab[j * 3]) ** 2 + (lab[i * 3 + 1] - lab[j * 3 + 1]) ** 2 + (lab[i * 3 + 2] - lab[j * 3 + 2]) ** 2; e += (2 * m[j] - 1) * 1.6 * Math.exp(-dc / (2 * beta2)) / (dx && dy ? 1.41 : 1); }
+        m[i] = e > 0 ? 1 : 0;
+      }
+    }
+    p = m;
+  }
+  // clean-up: keep the big pieces (and anything I marked), fill holes
+  let m = new Uint8Array(N); for (let i = 0; i < N; i++) m[i] = p[i] > 0.5 ? 1 : 0;
+  const lbl = new Int32Array(N).fill(-1), comps = [];
+  for (let i = 0; i < N; i++) if (m[i] && lbl[i] < 0) { const q = [i]; lbl[i] = comps.length; let n = 0, marked = false; while (q.length) { const j = q.pop(); n++; if (hard[j] === 1) marked = true; const x = j % W, y = (j / W) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const jj = yy * W + xx; if (m[jj] && lbl[jj] < 0) { lbl[jj] = comps.length; q.push(jj); } } } comps.push({ n, marked }); }
+  const big = Math.max(0, ...comps.map((c) => c.n));
+  for (let i = 0; i < N; i++) if (m[i] && !(comps[lbl[i]].n >= big * 0.15 || comps[lbl[i]].marked)) m[i] = 0;
+  const out = new Uint8Array(N), q = []; for (let x = 0; x < W; x++) { q.push(x, (H - 1) * W + x); } for (let y = 0; y < H; y++) { q.push(y * W, y * W + W - 1); }
+  while (q.length) { const j = q.pop(); if (out[j] || m[j]) continue; out[j] = 1; const x = j % W, y = (j / W) | 0; if (x > 0) q.push(j - 1); if (x < W - 1) q.push(j + 1); if (y > 0) q.push(j - W); if (y < H - 1) q.push(j + W); }
+  for (let i = 0; i < N; i++) if (!out[i] && hard[i] !== 2) m[i] = 1;
+  // up to the photo's size, with soft edges
+  const f = boxBlur(Float32Array.from(m), W, H, 1), A = new Uint8ClampedArray(W0 * H0);
+  for (let y = 0; y < H0; y++) for (let x = 0; x < W0; x++) {
+    const sx = Math.min(W - 1.001, x * k), sy = Math.min(H - 1.001, y * k), x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
+    const v = f[y0 * W + x0] * (1 - fx) * (1 - fy) + f[y0 * W + x0 + 1] * fx * (1 - fy) + f[(y0 + 1) * W + x0] * (1 - fx) * fy + f[(y0 + 1) * W + x0 + 1] * fx * fy;
+    A[y * W0 + x] = Math.max(0, Math.min(255, (v - 0.3) / 0.4 * 255));
+  }
+  C.alpha = A; C.props = null;
+}
+function cutCanvasOut(Z) { // the cut-out, cropped to the piece
+  const P = Z.photo, im = P.clean, C = Z.cut, W = im.width, H = im.height; let x0 = W, y0 = H, x1 = 0, y1 = 0;
+  const d = new Uint8ClampedArray(im.data); for (let i = 0; i < W * H; i++) { d[i * 4 + 3] = C.alpha[i]; if (C.alpha[i] > 100) { const x = i % W, y = (i / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  if (x1 <= x0) return null; const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04); x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(W - 1, x1 + pad); y1 = Math.min(H - 1, y1 + pad);
+  const a = document.createElement('canvas'); a.width = W; a.height = H; a.getContext('2d').putImageData(new ImageData(d, W, H), 0, 0);
+  const c = document.createElement('canvas'); c.width = x1 - x0 + 1; c.height = y1 - y0 + 1; c.getContext('2d').drawImage(a, -x0, -y0);
+  return C.rot ? rotateCrop(c, C.rot) : c;
+}
+function rotateCrop(c, deg) { // rotate a transparent cut-out and crop it again to the piece
+  const r = deg * Math.PI / 180, cs = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r)), w = Math.ceil(c.width * cs + c.height * sn), h = Math.ceil(c.width * sn + c.height * cs);
+  const o = document.createElement('canvas'); o.width = w; o.height = h; const x = o.getContext('2d'); x.translate(w / 2, h / 2); x.rotate(r); x.drawImage(c, -c.width / 2, -c.height / 2);
+  const d = x.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) if (d[(y * w + xx) * 4 + 3] > 100) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 <= x0) return o; const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04); x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  const f = document.createElement('canvas'); f.width = x1 - x0 + 1; f.height = y1 - y0 + 1; f.getContext('2d').drawImage(o, -x0, -y0); return f;
+}
+function autoStraight(Z) { // the angle that makes the piece sit straight: smallest box around it; shoes lie flat, the rest stand up
+  const C = Z.cut, W = Z.photo.clean.width, pts = [];
+  for (let i = 0; i < C.alpha.length; i += 7) if (C.alpha[i] > 128) pts.push([i % W, (i / W) | 0]);
+  if (pts.length < 20) return 0;
+  let best = 0, ba = 1e18;
+  for (let a = -45; a <= 45; a += 1) { const r = a * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const [x, y] of pts) { const u = x * c - y * s, v = x * s + y * c; if (u < x0) x0 = u; if (u > x1) x1 = u; if (v < y0) y0 = v; if (v > y1) y1 = v; } const ar = (x1 - x0) * (y1 - y0); if (ar < ba) { ba = ar; best = a; } }
+  // at that angle: is it wider than tall?
+  const r = best * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const [x, y] of pts) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+  const wide = x1 - x0 > y1 - y0, sub = Z.d.sub;
+  let rot = best; if (sub === 'shoe' && !wide) rot += 90; if (['pants', 'shorts'].includes(sub) && wide) rot += 90;
+  return ((rot + 540) % 360) - 180;
+}
+function slotBox(sub) { // where the app's own drawing of this category sits, so the caricature fits the mannequin
+  const host = document.createElement('div'); host.style.cssText = 'position:absolute;left:-9999px;width:400px;height:400px';
+  host.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400"><g>' + frParse(genSvg(designDefaults(sub), false)) + '</g></svg>';
+  document.body.appendChild(host); let b; try { b = host.querySelector('g').getBBox(); } catch (e) { b = null; } host.remove();
+  return b && b.width ? { x: b.x, y: b.y, w: b.width, h: b.height } : { x: 50, y: 50, w: 300, h: 300 };
+}
+function traceOuter(mask, W, H, start) {
+  const D = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]], ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && mask[y * W + x];
+  let x = start % W, y = (start / W) | 0, dir = 0; const sx = x, sy = y, pts = [{ x, y }];
+  for (let n = 0; n < W * H * 4; n++) { let ok = false; for (let i = 0; i < 8; i++) { const d = (dir + 6 + i) % 8, nx = x + D[d][0], ny = y + D[d][1]; if (ins(nx, ny)) { x = nx; y = ny; dir = d; ok = true; break; } } if (!ok || (x === sx && y === sy)) break; pts.push({ x, y }); }
+  return pts;
+}
+function dpSimplify(P, eps) {
+  if (P.length < 4) return P; const keep = new Uint8Array(P.length); keep[0] = keep[P.length - 1] = 1; const st = [[0, P.length - 1]];
+  while (st.length) { const [a, b] = st.pop(); let md = 0, mi = -1; const A = P[a], B = P[b], L = Math.hypot(B.x - A.x, B.y - A.y) || 1; for (let i = a + 1; i < b; i++) { const d = Math.abs((B.x - A.x) * (A.y - P[i].y) - (A.x - P[i].x) * (B.y - A.y)) / L; if (d > md) { md = d; mi = i; } } if (md > eps) { keep[mi] = 1; st.push([a, mi], [mi, b]); } }
+  return P.filter((_, i) => keep[i]);
+}
+const lab2hex = (C) => { // back to sRGB
+  const fy = (C[0] + 16) / 116, fx = fy + C[1] / 500, fz = fy - C[2] / 200, g = (t) => (t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787);
+  const X = g(fx) * 0.95047, Y = g(fy), Zz = g(fz) * 1.08883;
+  const l = [X * 3.2406 - Y * 1.5372 - Zz * 0.4986, -X * 0.9689 + Y * 1.8758 + Zz * 0.0415, X * 0.0557 - Y * 0.2040 + Zz * 1.0570].map((c) => 255 * (c > 0.0031308 ? 1.055 * Math.pow(c, 1 / 2.4) - 0.055 : 12.92 * c));
+  return toHex(l);
+};
+function caricature(Z, sub) {
+  const can = cutCanvasOut(Z); if (!can) return null;
+  const k = Math.min(1, 220 / Math.max(can.width, can.height)), W = Math.max(2, Math.round(can.width * k)), H = Math.max(2, Math.round(can.height * k));
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(can, 0, 0, W, H); const px = x.getImageData(0, 0, W, H).data, N = W * H;
+  const fg = new Uint8Array(N), lab = []; for (let i = 0; i < N; i++) { if (px[i * 4 + 3] > 128) { fg[i] = 1; lab[i] = rgb2lab(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]); } }
+  const S0 = []; for (let i = 0; i < N; i += 2) if (fg[i]) S0.push(lab[i]);
+  let Cs = kmeans(S0, 6, 10).filter((c) => c[3] > S0.length * 0.015);
+  for (let i = 0; i < Cs.length; i++) for (let j = i + 1; j < Cs.length; j++) { const a = Cs[i], b = Cs[j]; if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 11) { const n = a[3] + b[3]; Cs[i] = [(a[0] * a[3] + b[0] * b[3]) / n, (a[1] * a[3] + b[1] * b[3]) / n, (a[2] * a[3] + b[2] * b[3]) / n, n]; Cs.splice(j, 1); j = i; } }
+  Cs.sort((a, b) => b[3] - a[3]);
+  let L = new Int16Array(N).fill(-1); for (let i = 0; i < N; i++) if (fg[i]) L[i] = nearest(Cs, ...lab[i])[1];
+  for (let t = 0; t < 2; t++) { const M = new Int16Array(L); for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) { const i = y * W + xx; if (L[i] < 0) continue; const cnt = new Map(); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X = xx + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const v = L[Y * W + X]; if (v >= 0) cnt.set(v, (cnt.get(v) || 0) + 1); } let bv = L[i], bn = 0; cnt.forEach((n, v) => { if (n > bn) { bn = n; bv = v; } }); M[i] = bv; } L = M; }
+  const box = slotBox(sub), s = Math.min(box.w / W, box.h / H), ox = box.x + (box.w - W * s) / 2, oy = sub === 'shoe' ? box.y + box.h - H * s : box.y + (box.h - H * s) / 2;
+  const T = (p) => (Math.round((ox + (p.x + 0.5) * s) * 10) / 10) + ' ' + (Math.round((oy + (p.y + 0.5) * s) * 10) / 10);
+  const pathOf = (mask, start) => { const pts = dpSimplify(traceOuter(mask, W, H, start), 0.9); if (pts.length < 3) return ''; return frSmooth(pts.map((p) => { const [a, b] = T(p).split(' ').map(Number); return { x: a, y: b }; }), true); };
+  const dom = Cs[0], outl = lab2hex([Math.max(5, dom[0] * 0.35), dom[1] * 0.6, dom[2] * 0.6]);
+  const regs = [];
+  for (let ci = 0; ci < Cs.length; ci++) { const seen = new Uint8Array(N); for (let i = 0; i < N; i++) { if (L[i] !== ci || seen[i]) continue; const comp = new Uint8Array(N), q = [i]; seen[i] = 1; let n = 0; while (q.length) { const j = q.pop(); comp[j] = 1; n++; const X = j % W, Y = (j / W) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = X + dx, b = Y + dy; if (a < 0 || b < 0 || a >= W || b >= H) continue; const jj = b * W + a; if (!seen[jj] && L[jj] === ci) { seen[jj] = 1; q.push(jj); } } } if (n > N * 0.002 && n > 12) regs.push({ ci, n, comp, start: i }); } }
+  regs.sort((a, b) => b.n - a.n);
+  let first = -1; for (let i = 0; i < N; i++) if (fg[i]) { first = i; break; }
+  let o = '<path d="' + pathOf(fg, first) + '" fill="' + lab2hex(dom) + '"/>';
+  regs.forEach((r) => { const d = pathOf(r.comp, r.start); if (d) { const c = Cs[r.ci]; o += '<path d="' + d + '" fill="' + lab2hex(c) + '" stroke="' + lab2hex([Math.max(4, c[0] * 0.55), c[1], c[2]]) + '" stroke-width="1.4" stroke-linejoin="round"/>'; } });
+  o += '<path d="' + pathOf(fg, first) + '" fill="none" stroke="' + outl + '" stroke-width="4.5" stroke-linejoin="round"/>';
+  return { svg: o, colors: Cs.map(lab2hex) };
+}
+function cutHtml(Z) {
+  const C = cutState(Z), b = (attr, l, on) => '<button class="chip" ' + attr + (on !== undefined ? ' aria-pressed="' + !!on + '"' : '') + '>' + l + '</button>';
+  let h = '<div class="stack" style="gap:8px" id="cut-sec"><h3>Recortar a peça</h3><p class="status" style="font-size:13px;margin:0">'
+    + ({ rect: 'Arrasta um retângulo à volta da peça.', fg: 'Pinta por cima do que é peça e o recorte deixou de fora.', bg: 'Pinta por cima do que é fundo (mão, cama, chão) e ficou na peça.' })[C.tool] + ' Depois carrega em «Recortar».</p>'
+    + '<canvas id="cut-canvas" class="dz-canvas" style="touch-action:none"></canvas>'
+    + '<div class="chips" style="flex-wrap:wrap">' + b('data-cut-tool="rect"', 'Retângulo', C.tool === 'rect') + b('data-cut-tool="fg"', 'Pincel: é peça', C.tool === 'fg') + b('data-cut-tool="bg"', 'Pincel: é fundo', C.tool === 'bg') + b('data-cut-undo', 'Anular marca') + b('data-cut-clear', 'Recomeçar') + '</div>'
+    + '<label class="field" for="cut-size">Tamanho do pincel<input id="cut-size" type="range" min="4" max="60" step="2" value="' + C.size + '"></label>'
+    + '<button class="btn primary" data-cut-run' + (C.busy ? ' disabled' : '') + '>' + (C.busy ? 'A recortar…' : C.alpha ? 'Recortar outra vez' : 'Recortar') + '</button>';
+  if (C.alpha) {
+    const out = cutCanvasOut(Z);
+    h += '<h3>Resultado (sempre direito)</h3><div class="cut-result"><img src="' + (out ? out.toDataURL('image/png') : '') + '" alt="Peça recortada"></div>'
+      + '<div class="chips" style="flex-wrap:wrap">' + b('data-cut-rot="auto"', 'Endireitar automaticamente') + b('data-cut-rot="-90"', '↺ 90°') + b('data-cut-rot="90"', '↻ 90°') + b('data-cut-rot="180"', 'Virar ao contrário') + '</div>'
+      + '<label class="field" for="cut-tilt">Afinar a inclinação: <b id="cut-tilt-v">' + Math.round(C.rot) + '°</b><input id="cut-tilt" type="range" min="-180" max="180" step="1" value="' + Math.round(C.rot) + '"></label>';
+    if (!C.props) h += '<button class="btn" data-cut-props>Propor caricatura</button>';
+    else h += '<h3>Caricatura proposta</h3><div class="cut-props">' + C.props.map((p, i) => '<button class="cut-prop" data-cut-use="' + i + '"><img src="' + p.uri + '" alt=""><span>' + p.label + '</span></button>').join('') + '</div><p class="status" style="font-size:12px;margin:0">Toca numa para a usar. Depois podes mexer em tudo no Desenho livre.</p>';
+  }
+  return h + '</div>';
+}
+function cutDraw() {
+  const Z = S.designer, cv = document.getElementById('cut-canvas'); if (!Z || !cv || !Z.photo || !Z.photo.clean) return;
+  const C = cutState(Z), im = Z.photo.clean; cv.width = im.width; cv.height = im.height; const x = cv.getContext('2d');
+  if (C.alpha) { const d = new ImageData(new Uint8ClampedArray(im.data), im.width, im.height); for (let i = 0; i < C.alpha.length; i++) { const a = C.alpha[i] / 255; for (let c = 0; c < 3; c++) d.data[i * 4 + c] = d.data[i * 4 + c] * (0.25 + 0.75 * a) + 235 * (1 - a) * 0.75; } x.putImageData(d, 0, 0); }
+  else x.putImageData(im, 0, 0);
+  const lw = Math.max(2, im.width / 200);
+  C.marks.forEach((m) => { x.strokeStyle = m.kind === 'fg' ? 'rgba(46,170,90,.65)' : 'rgba(220,60,60,.65)'; x.lineWidth = m.r * 2; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); m.pts.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y))); if (m.pts.length === 1) x.lineTo(m.pts[0].x + 0.1, m.pts[0].y); x.stroke(); });
+  if (C.rect) { x.setLineDash([lw * 4, lw * 3]); x.lineWidth = lw; x.strokeStyle = '#1E88E5'; x.strokeRect(Math.min(C.rect.x0, C.rect.x1), Math.min(C.rect.y0, C.rect.y1), Math.abs(C.rect.x1 - C.rect.x0), Math.abs(C.rect.y1 - C.rect.y0)); x.setLineDash([]); }
+}
+function cutMount() {
+  const Z = S.designer, cv = document.getElementById('cut-canvas'); if (!Z || !cv) return; cutDraw();
+  const C = cutState(Z); let cur = null;
+  const pt = (ev) => { const r = cv.getBoundingClientRect(); return { x: (ev.clientX - r.left) / r.width * cv.width, y: (ev.clientY - r.top) / r.height * cv.height }; };
+  cv.addEventListener('pointerdown', (ev) => { ev.preventDefault(); cv.setPointerCapture(ev.pointerId); const p = pt(ev); const scale = cv.width / cv.getBoundingClientRect().width;
+    if (C.tool === 'rect') { C.rect = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; cur = 'rect'; } else { cur = { kind: C.tool, r: C.size * scale / 2, pts: [p] }; C.marks.push(cur); } cutDraw(); });
+  cv.addEventListener('pointermove', (ev) => { if (!cur) return; const p = pt(ev); if (cur === 'rect') { C.rect.x1 = p.x; C.rect.y1 = p.y; } else cur.pts.push(p); cutDraw(); });
+  const up = () => { if (!cur) return; if (cur === 'rect' && Math.abs(C.rect.x1 - C.rect.x0) < 8) C.rect = null; cur = null; cutDraw(); };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+}
+function cutProps(Z) {
+  const C = Z.cut, sub = Z.d.sub, car = caricature(Z, sub); if (!car) { toast('O recorte ficou vazio. Ajusta e recorta outra vez.'); return; }
+  const cols = car.colors, d2 = designDefaults(sub, Object.assign({}, Z.d, { color: cols[0], color2: cols[1] || Z.d.color2, color3: cols[2] || Z.d.color3 }));
+  Object.keys(Z.d).forEach((k) => { if (!['color', 'color2', 'color3', 'sub'].includes(k) && Z.d[k] !== undefined) d2[k] = Z.d[k]; });
+  C.props = [{ label: 'Caricatura da foto', kind: 'vec', svg: car.svg, uri: svgUri(frSvg(car.svg)), colors: cols }, { label: 'Modelo com estas cores', kind: 'param', d: d2, uri: svgUri(genSvg(d2, false)) }];
+}
+document.addEventListener('click', (ev) => {
+  const Z = S.designer; if (!Z || !Z.photo) return; const t = ev.target.closest('button'); if (!t) return; const C = cutState(Z);
+  const keepName = () => { const n = document.getElementById('dz-name'); if (n) Z.name = n.value; };
+  if (t.dataset.cutTool) { C.tool = t.dataset.cutTool; renderSheet(true); return; }
+  if (t.hasAttribute('data-cut-undo')) { C.marks.pop(); cutDraw(); return; }
+  if (t.hasAttribute('data-cut-clear')) { C.marks = []; C.rect = null; C.alpha = null; C.props = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-cut-run')) { keepName(); C.busy = true; renderSheet(true); setTimeout(() => { try { segment(Z); C.rot = autoStraight(Z); } catch (e) { toast('Não consegui recortar esta foto.'); } C.busy = false; renderSheet(true); const s = document.getElementById('cut-sec'); if (s) s.scrollIntoView({ block: 'start' }); }, 30); return; }
+  if (t.dataset.cutRot) { const v = t.dataset.cutRot; C.rot = v === 'auto' ? autoStraight(Z) : ((C.rot + +v + 540) % 360) - 180; C.props = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-cut-props')) { keepName(); try { cutProps(Z); } catch (e) { toast('Não consegui propor a caricatura.'); } renderSheet(true); return; }
+  if (t.dataset.cutUse) {
+    keepName(); const p = C.props[+t.dataset.cutUse]; if (!p) return;
+    if (p.kind === 'vec') { Z.d.color = p.colors[0]; if (p.colors[1]) Z.d.color2 = p.colors[1]; Z.useFree = true; if (!Z.free) frInit(Z); const F = Z.free; const go = () => { F.hist.push(F.view + '\u0000' + F.src.closed); F.src.closed = p.svg; if (Z.d.sub === 'outer') F.src.open = p.svg; F.view = 'closed'; F.sel = null; F.fill = p.colors[0]; renderSheet(true); }; if (F.loading) { const w = setInterval(() => { if (!F.loading) { clearInterval(w); go(); } }, 50); } else go(); }
+    else { Z.d = p.d; Z.useFree = false; renderSheet(true); }
+    toast('Caricatura aplicada. Ajusta o que quiseres antes de guardar.'); return;
+  }
+});
+document.addEventListener('input', (ev) => { const Z = S.designer; if (!Z || !Z.cut) return; if (ev.target.id === 'cut-size') Z.cut.size = +ev.target.value; if (ev.target.id === 'cut-tilt') { const v = document.getElementById('cut-tilt-v'); if (v) v.textContent = ev.target.value + '°'; } });
+document.addEventListener('change', (ev) => { const Z = S.designer; if (Z && Z.cut && ev.target.id === 'cut-tilt') { Z.cut.rot = +ev.target.value; Z.cut.props = null; renderSheet(true); } });
 
 // ---------- data panel: account, sync, backup / import / storage ----------
 function cloudHtml() {
@@ -2319,6 +2848,8 @@ document.addEventListener('change', (ev) => {
   if (el.id === 'sort') { S.sort = el.value; pref('sort', S.sort); render(); }
 });
 document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if (S.viewer) { closeViewer(); return; } if (S.designer) { const a = S.designer.afterSave; S.designer = null; if (a) a(null); renderSheet(true); return; } if (S.open || S.builder) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); } });
+document.addEventListener('input', (ev) => { const el = ev.target; if (el && el.dataset && 'minstyle' in el.dataset) { const v = document.getElementById('minsty-v'); if (v) v.textContent = Number(el.value) ? el.value : 'qualquer'; } });
+document.addEventListener('change', (ev) => { const el = ev.target; if (el && el.dataset && 'minstyle' in el.dataset) { pref('minStyle', String(Number(el.value) || 0)); render(); } });
 document.addEventListener('change', (ev) => { // camisola interior of a fit, of a day, or of the fit being built
   const t = ev.target; if (!t || !t.dataset || !t.dataset.usel) return;
   const scope = t.dataset.usel, id = t.dataset.uselId, fld = t.dataset.uselF === 'socks' ? 'socks' : 'under', val = OPTS[fld][1][t.value] ? t.value : '';
