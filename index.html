@@ -1283,7 +1283,7 @@ function fitCard(f, compact) {
     + (usedToday ? '<span class="btn" style="flex:1;background:var(--accent-soft);color:var(--accent-soft-ink);border-color:transparent">Escolhido para hoje</span>'
       : '<button class="btn primary" data-fit-use="' + esc(f.id) + '" style="flex:1">Vou usar hoje</button>')
     + '</div>';
-  if (!compact) h += '<button class="btn" data-fit-base="' + esc(f.id) + '" style="min-height:40px;font-size:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Criar outro a partir deste</button>';
+  if (!compact) h += '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fit-edit="' + esc(f.id) + '" style="min-height:40px;font-size:14px;flex:1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>Editar</button><button class="btn" data-fit-base="' + esc(f.id) + '" style="min-height:40px;font-size:14px;flex:1.4"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Criar outro a partir deste</button></div>';
   return h + '</article>';
 }
 
@@ -1463,8 +1463,8 @@ function builderHtml() {
   const groups = SUBS.map((s) => ({ s, ps: S.pieces.filter((p) => subOf(p) === s.id) })).filter((g) => g.ps.length);
   const hint = { outer: 'opcional · 1 no máximo', top: '1 por tipo · podes juntar t-shirt e camisola', bottom: 'obrigatório · só 1 (calças ou calções)', shoe: 'obrigatório · só 1', acc: 'opcional' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
-    + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar o fit de hoje' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
-    + (B.editDay ? '' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
+    + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar o fit de hoje' : B.editFit ? 'Editar fit' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
+    + (B.editDay ? '' : B.editFit ? '<p class="note">Muda o nome, as peças ou as opções. Os dias em que já o usaste ficam como estavam.</p>' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
       : activeFits().length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
         + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(uids(f), 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
@@ -1477,12 +1477,18 @@ function builderHtml() {
   h += '<button class="btn" data-b-newpiece style="border-style:dashed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nova peça (ex.: ainda sem foto)</button>';
   h += '<label class="field" for="bname">Nome (opcional)<input id="bname" type="text" value="' + esc(B.title) + '" placeholder="Ex.: Jantar de sexta" style="min-height:44px"></label>';
   h += '<p class="status" role="status">' + (st.ok ? 'Fit completo: ' + B.sel.length + ' peças.' : 'Falta: ' + [!st.top && 'parte de cima', !st.bottom && 'calças ou calções', !st.shoe && 'calçado'].filter(Boolean).join(', ') + '.') + '</p>';
-  h += B.editDay
-    ? '<div class="row"><button class="btn" data-close>Cancelar</button><button class="btn primary" data-bsave="edit"' + (st.ok ? '' : ' disabled') + '>Guardar alterações</button></div>'
+  h += B.editDay || B.editFit
+    ? '<div class="row"><button class="btn" data-close>Cancelar</button><button class="btn primary" data-bsave="' + (B.editFit ? 'fit' : 'edit') + '"' + (st.ok ? '' : ' disabled') + '>Guardar alterações</button></div>'
     : '<div class="row"><button class="btn" data-bsave="guardar"' + (st.ok ? '' : ' disabled') + '>Guardar</button><button class="btn primary" data-bsave="hoje"' + (st.ok ? '' : ' disabled') + '>Vou usar hoje</button></div>';
   return h + '</section></div>';
 }
 
+function editFitBuilder(id) { // change this fit itself: name, pieces and options
+  const f = S.fits.find((x) => x.id === id); if (!f) return;
+  S.open = null;
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: f.title || '', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', editFit: f.id };
+  renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
+}
 function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null;
@@ -1509,6 +1515,25 @@ async function saveBuilder(mode) {
   const pieces = B.sel.slice().sort((a, b) => SUB_ORDER.indexOf(subOf(pieceById(a))) - SUB_ORDER.indexOf(subOf(pieceById(b))));
   try {
     const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened);
+    if (mode === 'fit') {
+      const f = S.fits.find((x) => x.id === B.editFit); if (!f) { S.builder = null; renderSheet(); return; }
+      const other = fitOf(pieces, f.id);
+      if (other) { // now the same pieces as another fit: they become one (that one), with this one's rating if it had none
+        const patch = { closed, opened, under, socks };
+        if (typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
+        if (f.status === 'gosto' && other.status !== 'gosto') patch.status = 'gosto';
+        const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
+        if (auto(other.title) && !auto(title)) patch.title = title;
+        await db.doc('fits/' + other.id).update(patch);
+        for (const d of S.days.filter((x) => x.fit === f.id)) await db.doc('days/' + d.date).update({ fit: other.id });
+        await db.doc('fits/' + f.id).delete();
+        toast('Já tinhas «' + (other.title || 'Fit') + '» com estas peças: ficaram um só.');
+      } else {
+        await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, editedAt: new Date().toISOString() });
+        toast('Fit atualizado.');
+      }
+      S.builder = null; renderSheet(); render(); return;
+    }
     if (mode === 'edit') {
       const t = B.editDay, day = S.days.find((x) => x.date === t) || {};
       const f = day.fit && S.fits.find((x) => x.id === day.fit);
@@ -2251,6 +2276,7 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.rstep) { const f = S.fits.find((x) => x.id === t.dataset.rid); applyRating(t.dataset.rid, ((f && typeof f.rating === 'number') ? f.rating : 0) + Number(t.dataset.rstep)); return; }
   if (t.dataset.bpick) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; togglePick(t.dataset.bpick); renderSheet(); return; }
   if (t.dataset.bsave) { saveBuilder(t.dataset.bsave); return; }
+  if (t.dataset.fitEdit) { editFitBuilder(t.dataset.fitEdit); return; }
   if (t.dataset.kind) { S.upKind = t.dataset.kind; S.msg = ''; render(); return; }
   if (t.dataset.lt) { // open / close one layer (casaco, camisola, camisa), each on its own
     const scope = t.dataset.lt, id = t.dataset.ltId, layer = t.dataset.ltLayer, on = t.dataset.ltOpen === '1';
