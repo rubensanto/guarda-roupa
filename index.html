@@ -123,7 +123,7 @@ nav.tabs svg{width:24px;height:24px}
 .tags span{padding:6px 10px;border-radius:10px;background:var(--sunk);font-size:13px}
 .swatch{width:22px;height:22px;border-radius:11px;border:1px solid var(--line);flex:none}
 .orig{display:flex;gap:12px;align-items:center;padding:10px;border-radius:16px;border:1px solid var(--line)}
-.orig img{width:64px;height:64px;border-radius:10px;object-fit:cover}
+.orig img{width:64px;height:64px;border-radius:10px;object-fit:contain;background:#E4E3DE}
 .kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .kv div{background:var(--sunk);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv small{font-size:12px;color:var(--muted)}
@@ -230,8 +230,8 @@ nav.tabs svg{width:24px;height:24px}
 .viewer[hidden],#sheet[hidden]{display:none!important}
 .vtop{display:flex;justify-content:space-between;align-items:center;padding-top:calc(10px + env(safe-area-inset-top,0px));padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-size:13px;color:#B9BCB9;font-variant-numeric:tabular-nums}
 .vbtn{width:44px;height:44px;border-radius:22px;border:none;background:#262928;color:#F2F2EF;font-size:22px;display:flex;align-items:center;justify-content:center}
-.vbox{flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none}
-.vbox img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;-webkit-user-drag:none;background:#F2F2EF}
+.vbox{flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none;background:#E4E3DE}
+.vbox img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;-webkit-user-drag:none}
 .vhint{margin:0;text-align:center;font-size:12px;color:#9A9E9B;padding-top:8px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
@@ -386,6 +386,7 @@ const LS = (() => {
   }
   async function importAll(json, mode) {
     if (!json || json.app !== 'guarda-roupa' || !json.data) throw new Error('bad_file');
+    if (mode === 'replace' && !Object.values(json.data).some((a) => a && a.length)) mode = 'merge'; // a patch-only file never wipes anything
     if (mode === 'replace') {
       await tx('docs', 'readwrite', (s) => s.clear()); await tx('blobs', 'readwrite', (s) => s.clear());
       urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); cols.forEach((m) => m.clear());
@@ -402,6 +403,13 @@ const LS = (() => {
       for (const row of json.data[n]) { const { id, ...d } = row; col(n).set(id, d); }
       await tx('docs', 'readwrite', (s) => { col(n).forEach((d, id) => s.put({ k: n + '/' + id, col: n, id, data: d })); });
       await queue(json.data[n].map((row) => docEntry(n, row.id)));
+    }
+    // `patch`: change only some fields of docs I already have (e.g. a new photo), keeping everything else
+    for (const n of Object.keys(json.patch || {})) {
+      const ids = [];
+      for (const row of json.patch[n]) { const { id, ...d } = row; const cur = col(n).get(id); if (!cur) continue; col(n).set(id, { ...cur, ...d }); ids.push(id); }
+      await tx('docs', 'readwrite', (s) => { ids.forEach((id) => s.put({ k: n + '/' + id, col: n, id, data: col(n).get(id) })); });
+      await queue(ids.map((id) => docEntry(n, id)));
     }
     cols.forEach((m, n) => notify(n));
   }
@@ -2208,7 +2216,7 @@ async function readImport(file) {
   try {
     const json = JSON.parse(await file.text());
     if (!json || json.app !== 'guarda-roupa' || !json.data) throw new Error('bad');
-    D.pending = { json, name: file.name, count: (json.data.pieces || []).length, days: (json.data.days || []).length, files: Object.keys(json.assets || {}).length };
+    D.pending = { json, name: file.name, count: (json.data.pieces || []).length + ((json.patch && json.patch.pieces) || []).length, days: (json.data.days || []).length, files: Object.keys(json.assets || {}).length };
   } catch (e) { D.msg = 'Este ficheiro não é uma cópia de segurança do Guarda-Roupa.'; D.err = true; }
   D.busy = null; renderSheet(true);
 }
