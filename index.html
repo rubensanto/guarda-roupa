@@ -871,6 +871,8 @@ const CLIP_V = 'polygon(0 0,45% 0,50% 36%,55% 0,100% 0,100% 100%,0 100%)';
 const WIN = { half: 'polygon(' + V_PTS + ')', band: 'inset(0 30% 0 30%)' };
 // limits a layer to the silhouette of another piece, so nothing ever pokes out above the collar
 const maskOf = (src) => { const u = "url('" + String(src).replace(/'/g, '%27') + "') 0 0/100% 100% no-repeat"; return ';-webkit-mask:' + u + ';mask:' + u; };
+const masksOf = (ms) => { if (!ms.length) return ''; const u = ms.map(([src, pos]) => "url('" + String(src).replace(/'/g, '%27') + "') " + pos + ' no-repeat').join(',');
+  return ';-webkit-mask:' + u + ';mask:' + u + (ms.length > 1 ? ';-webkit-mask-composite:' + ms.slice(1).map(() => 'source-in').join(',') + ';mask-composite:intersect' : ''); };
 function dressedHtml(ids, w, closed, opened) {
   const ps = (ids || []).map(pieceById).filter(Boolean);
   const bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
@@ -898,7 +900,11 @@ function dressedHtml(ids, w, closed, opened) {
       else if (p.openIcon || !p.icon) src = pieceSrc(p, true);
       else clip = CLIP_GAP;
     }
-    const lim = v.win === 'half' && half && half.p !== p ? maskOf(halfSrc) : '';
+    // a layer under an open one is only seen inside that one's outline (as if it were closed): it never pokes out
+    // at the sides, below the hem or past the sleeves. The outer piece sits in a box 2 % bigger, hence its offset.
+    const ms = vis.slice(0, i).filter((w) => w.open).map((w) => [pieceSrc(w.p), subOf(w.p) === 'outer' && subOf(p) !== 'outer' ? '50% 45%/104.1667% 104.1667%' : '0 0/100% 100%']);
+    if (v.win === 'half' && half && half.p !== p && !ms.some((m) => m[0] === halfSrc)) ms.push([halfSrc, '0 0/100% 100%']);
+    const lim = masksOf(ms);
     L.push('<span class="dw" style="' + box + ';z-index:' + z + (v.win ? ';clip-path:' + WIN[v.win] : '') + lim + '"><img src="' + src + '" alt=""' + (clip ? ' style="clip-path:' + clip + '"' : '') + '></span>');
   });
   if (shoe) {
