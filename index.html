@@ -218,7 +218,10 @@ nav.tabs svg{width:24px;height:24px}
 .minsty{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;font-size:14px;color:var(--muted)}
 .minsty b{color:var(--fg);font-weight:600}
 .minsty input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
-.fr-stage{background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:6px}
+.fr-stage{position:relative;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:6px}
+.fr-zoom{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);border:1px solid #D6D6D0;border-radius:22px;padding:3px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.fr-zoom button{width:36px;height:36px;border-radius:18px;border:none;background:#F1F0EC;color:#222;font-size:18px;line-height:1}
+.fr-zoom span{min-width:44px;text-align:center;font-size:12px;color:#444}
 .fr-svg{display:block;width:100%;max-width:560px;margin:0 auto;aspect-ratio:1;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:#fff}
 .fr-svg.tool-select,.fr-svg.tool-bucket{cursor:pointer}.fr-svg.tool-pan{cursor:grab}.fr-svg.tool-pen,.fr-svg.tool-poly,.fr-svg.tool-line,.fr-svg.tool-rect,.fr-svg.tool-ellipse,.fr-svg.tool-text{cursor:crosshair}
 .fr-colors{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:14px}
@@ -2230,7 +2233,7 @@ function frParse(svgText) {
 }
 const frSvg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400">' + inner + '</svg>';
 function frInit(Z) {
-  const F = Z.free = { view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
+  const F = Z.free = { corner: false, view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
   const p = Z.mode === 'edit' && pieceById(Z.id);
   const fromIcon = async (id) => { const u = id && blob(id); if (!u) return ''; try { return frParse(await (await fetch(u)).text()); } catch (e) { return ''; } };
   (async () => {
@@ -2265,7 +2268,9 @@ function frSmooth(pts, close) { // points → smooth path (quadratic through mid
   let d = 'M' + f(pts[0].x) + ' ' + f(pts[0].y);
   for (let i = 1; i < P.length - 2; i++) {
     const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2];
-    d += ' C' + f(p1.x + (p2.x - p0.x) / 6) + ' ' + f(p1.y + (p2.y - p0.y) / 6) + ' ' + f(p2.x - (p3.x - p1.x) / 6) + ' ' + f(p2.y - (p3.y - p1.y) / 6) + ' ' + f(p2.x) + ' ' + f(p2.y);
+    if (p1.c && p2.c) { d += ' L' + f(p2.x) + ' ' + f(p2.y); continue; } // two «bicos»: straight edge
+    const a = p1.c ? p1 : { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }, b = p2.c ? p2 : { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    d += ' C' + f(a.x) + ' ' + f(a.y) + ' ' + f(b.x) + ' ' + f(b.y) + ' ' + f(p2.x) + ' ' + f(p2.y);
   }
   return d + (close ? ' Z' : '');
 }
@@ -2285,11 +2290,13 @@ function frHtml(Z) {
   h += '<div class="fr-stage"><svg id="fr-svg" viewBox="' + vx + ' ' + vy + ' ' + vw + ' ' + vw + '" xmlns="http://www.w3.org/2000/svg" class="fr-svg tool-' + F.tool + '">'
     + '<rect x="0" y="0" width="400" height="400" fill="#FFFFFF" data-fr-bg="1"/>'
     + (under ? '<image href="' + esc(under) + '" x="0" y="0" width="400" height="400" preserveAspectRatio="xMidYMid meet" opacity="' + F.uop / 100 + '" pointer-events="none"/>' : '')
-    + '<g id="fr-root"' + (under ? ' opacity="' + (1 - F.uop / 200) + '"' : '') + '>' + F.src[F.view] + '</g><g id="fr-ui" pointer-events="none"></g></svg></div>';
+    + '<g id="fr-root"' + (under ? ' opacity="' + (1 - F.uop / 200) + '"' : '') + '>' + F.src[F.view] + '</g><g id="fr-ui" pointer-events="none"></g></svg>'
+    + '<div class="fr-zoom"><button data-fr-zoom="out" aria-label="Diminuir zoom">−</button><span id="fr-zl">' + Math.round(F.zoom * 100) + '%</span><button data-fr-zoom="in" aria-label="Aumentar zoom">+</button><button data-fr-zoom="1" aria-label="Ver tudo">⤢</button></div></div>';
   h += '<div class="chips fr-tools" style="flex-wrap:wrap">' + FR_TOOLS.map(([k, l]) => btn('data-fr-tool="' + k + '"', l, F.tool === k)).join('') + '</div>';
-  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos; no fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
+  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos. Toca num ponto para o trocar entre curva (●) e bico (■); arrasta-o para o mover. No fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
   h += '<p class="status" style="font-size:13px;margin:0">' + tip[F.tool] + '</p>';
-  if (F.tool === 'poly') h += '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fr-polycancel' + (F.pts && F.pts.length ? '' : ' disabled') + '>Cancelar pontos</button><button class="btn primary" data-fr-polydone' + (F.pts && F.pts.length >= 2 ? '' : ' disabled') + '>Concluir forma (' + (F.pts ? F.pts.length : 0) + ')</button></div>';
+  if (F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="corner"', 'Próximos pontos em bico', F.corner) + btn('data-fr-polyundo', 'Apagar último ponto', undefined, F.pts && F.pts.length ? '' : ' disabled') + '</div>'
+    + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fr-polycancel' + (F.pts && F.pts.length ? '' : ' disabled') + '>Cancelar</button><button class="btn primary" data-fr-polydone' + (F.pts && F.pts.length >= 2 ? '' : ' disabled') + '>' + (F.editing ? 'Guardar pontos' : 'Concluir forma') + ' (' + (F.pts ? F.pts.length : 0) + ')</button></div>';
   if (F.tool === 'text') h += '<div class="row" style="flex-wrap:nowrap"><input id="fr-text" type="text" placeholder="Texto" value="' + esc(F.text) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-fs" min="6" max="200" value="' + F.fs + '"></label></div>';
   if (F.tool === 'pen' || F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="closed"', 'Fechar e pintar a forma', F.closed) + (F.tool === 'poly' ? btn('data-fr-toggle="smooth"', 'Curvas suaves', F.smooth) : '') + '</div>';
   if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="deep"', 'Escolher partes dentro de grupos', F.deep) + '</div>';
@@ -2306,11 +2313,13 @@ function frHtml(Z) {
       + btn('data-fr-act="front"', 'Para a frente') + btn('data-fr-act="back"', 'Para trás') + btn('data-fr-act="dup"', 'Duplicar') + btn('data-fr-act="flip"', 'Espelhar') + btn('data-fr-act="flipv"', 'Virar ao contrário')
       + btn('data-fr-act="rotl"', '↺ 15°') + btn('data-fr-act="rotr"', '↻ 15°') + btn('data-fr-act="big"', 'Maior') + btn('data-fr-act="small"', 'Menor')
       + btn('data-fr-act="wide"', 'Mais larga') + btn('data-fr-act="narrow"', 'Mais estreita') + btn('data-fr-act="tall"', 'Mais alta') + btn('data-fr-act="short"', 'Mais baixa')
+      + (frGet(F.sel) && frGet(F.sel).getAttribute && frGet(F.sel).getAttribute('data-pts') ? btn('data-fr-act="editpts"', 'Editar pontos') : '')
       + btn('data-fr-act="ungroup"', 'Desagrupar') + btn('data-fr-act="del"', 'Apagar', undefined, ' style="color:var(--new-ink)"')
       + '</div><div class="fr-nudge">' + btn('data-fr-act="l"', '←') + btn('data-fr-act="u"', '↑') + btn('data-fr-act="d"', '↓') + btn('data-fr-act="r"', '→') + '<button class="chip" data-fr-act="none">Largar seleção</button></div></div>';
   } else h += '<div class="chips">' + btn('data-fr-act="next"', 'Escolher a primeira parte') + '</div>';
   // view + history
-  h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-zoom="out"', 'Zoom −') + btn('data-fr-zoom="in"', 'Zoom +') + btn('data-fr-zoom="1"', 'Ver tudo') + btn('data-fr-undo', 'Anular', undefined, F.hist.length ? '' : ' disabled') + btn('data-fr-redo', 'Refazer', undefined, F.fut.length ? '' : ' disabled') + '</div>';
+  h += '<p class="status" style="font-size:12px;margin:0">Zoom: dois dedos no desenho (ou a roda do rato), ou os botões no canto. Com zoom, «Mover vista» ou dois dedos para andar.</p>';
+  h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-undo', 'Anular', undefined, F.hist.length ? '' : ' disabled') + btn('data-fr-redo', 'Refazer', undefined, F.fut.length ? '' : ' disabled') + '</div>';
   h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="under"', 'Ver a foto por baixo (para decalcar)', F.under, Z.photo || Z.keepPhoto ? '' : ' disabled') + btn('data-fr-reset', 'Recomeçar do modelo da categoria') + btn('data-fr-clear', 'Limpar tudo') + '</div>';
   if (F.under) h += '<label class="field" for="fr-uop">Transparência da foto<input id="fr-uop" type="range" min="10" max="90" step="5" value="' + F.uop + '"></label>';
   return h + '</div>';
@@ -2321,10 +2330,28 @@ function frMount() {
   const sel = frGet(F.sel);
   if (F.sel && !sel) F.sel = null;
   if (sel) { const b = frBox(sel), k = 400 / (400 / F.zoom); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>'; }
-  if (F.tool === 'poly' && F.pts && F.pts.length) ui.innerHTML += '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, false) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L')) : '') + '" fill="none" stroke="#1E88E5" stroke-width="2"/>' + F.pts.map((p) => '<circle cx="' + p.x + '" cy="' + p.y + '" r="4" fill="#1E88E5"/>').join('');
-  let drag = null;
+  const drawPts = () => { if (!(F.tool === 'poly' && F.pts && F.pts.length)) return ''; const z = 1 / F.zoom, r = 5 * z;
+    return '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, F.closed && F.pts.length > 2) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '')) : '') + '" fill="' + (F.closed && !F.noFill ? F.fill : 'none') + '" fill-opacity=".35" stroke="#1E88E5" stroke-width="' + 2 * z + '"/>'
+      + F.pts.map((p, i) => p.c ? '<rect x="' + (p.x - r) + '" y="' + (p.y - r) + '" width="' + 2 * r + '" height="' + 2 * r + '" fill="#E8553D" stroke="#fff" stroke-width="' + 1.5 * z + '"/>' : '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + (i === F.pts.length - 1 ? '#0D47A1' : '#1E88E5') + '" stroke="#fff" stroke-width="' + 1.5 * z + '"/>').join(''); };
+  ui.innerHTML += drawPts();
+  let drag = null; const touches = new Map(); let pinch = null;
+  const setVB = () => { const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); const zl = document.getElementById('fr-zl'); if (zl) zl.textContent = Math.round(F.zoom * 100) + '%'; ui.innerHTML = ''; };
+  const zoomAt = (z, sx, sy) => { // keep the point under (sx, sy) on screen where it is
+    const r = svg.getBoundingClientRect(), vw0 = 400 / F.zoom, x0 = F.cx - vw0 / 2, y0 = F.cy - vw0 / 2, px = x0 + (sx - r.left) / r.width * vw0, py = y0 + (sy - r.top) / r.height * vw0;
+    F.zoom = Math.max(1, Math.min(12, z)); const vw = 400 / F.zoom; F.cx = px - (sx - r.left) / r.width * vw + vw / 2; F.cy = py - (sy - r.top) / r.height * vw + vw / 2; setVB();
+  };
+  svg.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(F.zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), ev.clientX, ev.clientY); }, { passive: false });
+  svg.addEventListener('pointerdown', (ev) => { touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: F.zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; drag = null; ui.innerHTML = ''; } }, true);
+  svg.addEventListener('pointermove', (ev) => {
+    if (!touches.has(ev.pointerId)) return; touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pinch && touches.size === 2) { const [a, b] = [...touches.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, r = svg.getBoundingClientRect();
+      zoomAt(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, pinch.d), mx, my);
+      const k = 400 / F.zoom / r.width; F.cx -= (mx - pinch.mx) * k; F.cy -= (my - pinch.my) * k; pinch.mx = mx; pinch.my = my; setVB(); ev.stopImmediatePropagation(); }
+  }, true);
+  const lift = (ev) => { touches.delete(ev.pointerId); if (pinch) { ev.stopImmediatePropagation(); if (!touches.size) { pinch = null; drag = null; renderSheet(true); } } };
+  svg.addEventListener('pointerup', lift, true); svg.addEventListener('pointercancel', lift, true);
   svg.addEventListener('pointerdown', (ev) => {
-    if (ev.button > 0) return; ev.preventDefault();
+    if (ev.button > 0 || pinch) return; ev.preventDefault();
     const p = frPt(ev); svg.setPointerCapture(ev.pointerId);
     if (F.tool === 'pan') { drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, cx: F.cx, cy: F.cy, k: 400 / F.zoom / svg.getBoundingClientRect().width }; return; }
     if (F.tool === 'select' || F.tool === 'bucket') {
@@ -2337,12 +2364,18 @@ function frMount() {
       ui.innerHTML = ''; const b = frBox(el); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="2" stroke-dasharray="6 4"/>';
       return;
     }
-    if (F.tool === 'poly') return; // points are added on pointerup (a tap)
+    if (F.tool === 'poly') { // tap = new point; on an existing point: tap toggles curve/bico, drag moves it
+      const tol = 14 * (400 / F.zoom) / svg.getBoundingClientRect().width; let hit = -1;
+      (F.pts || []).forEach((q, i) => { if (Math.hypot(q.x - p.x, q.y - p.y) <= tol) hit = i; });
+      drag = hit >= 0 ? { kind: 'pt', i: hit, moved: false, p } : { kind: 'polyadd', p }; return;
+    }
     if (F.tool === 'text') { const tx = (document.getElementById('fr-text') || {}).value || F.text; if (!tx.trim()) { toast('Escreve primeiro o texto.'); return; } F.text = tx; frAdd('<text x="' + p.x + '" y="' + p.y + '" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="' + F.fs + '" text-anchor="middle" fill="' + (F.noFill ? F.stroke : F.fill) + '"' + (F.noStroke ? '' : ' stroke="' + F.stroke + '" stroke-width="' + Math.min(F.sw, 2) + '" paint-order="stroke"') + '>' + esc(tx) + '</text>'); return; }
     drag = { kind: F.tool, p, pts: [p] };
   });
   svg.addEventListener('pointermove', (ev) => {
-    if (!drag) return; const p = frPt(ev);
+    if (!drag || pinch) return; const p = frPt(ev);
+    if (drag.kind === 'pt') { const q = F.pts[drag.i]; if (Math.hypot(p.x - drag.p.x, p.y - drag.p.y) > 1.5 / F.zoom) drag.moved = true; if (drag.moved) { q.x = p.x; q.y = p.y; ui.innerHTML = drawPts(); } return; }
+    if (drag.kind === 'polyadd') return;
     if (drag.kind === 'pan') { F.cx = drag.cx - (ev.clientX - drag.sx) * drag.k; F.cy = drag.cy - (ev.clientY - drag.sy) * drag.k; const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); return; }
     if (drag.kind === 'move') { const dx = p.x - drag.p.x, dy = p.y - drag.p.y; if (Math.abs(dx) + Math.abs(dy) > 0.6) drag.moved = true; if (drag.moved) { drag.el.setAttribute('transform', ('translate(' + Math.round(dx * 10) / 10 + ' ' + Math.round(dy * 10) / 10 + ') ' + drag.base).trim()); const b = frBox(drag.el); ui.firstChild && (ui.firstChild.setAttribute('x', b.x - 3), ui.firstChild.setAttribute('y', b.y - 3)); } return; }
     const a = drag.p; let d = '';
@@ -2354,7 +2387,8 @@ function frMount() {
   });
   const end = (ev) => {
     const g = drag; drag = null;
-    if (F.tool === 'poly' && ev.type === 'pointerup') { const p = frPt(ev); F.pts = (F.pts || []).concat([p]); renderSheet(true); return; }
+    if (g && g.kind === 'pt') { if (!g.moved) F.pts[g.i].c = !F.pts[g.i].c; renderSheet(true); return; }
+    if (g && g.kind === 'polyadd') { const p = frPt(ev); F.pts = (F.pts || []).concat([{ x: p.x, y: p.y, c: F.corner }]); renderSheet(true); return; }
     if (!g) return;
     if (g.kind === 'pan') return;
     if (g.kind === 'move') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; F.sel = frPathOf(g.el); frCommit(); } else renderSheet(true); return; }
@@ -2376,6 +2410,7 @@ function frAct(a) {
     F.sel = frPathOf(items[a === 'next' ? (i + 1) % n : (i - 1 + n) % n]); renderSheet(true); return;
   }
   const el = frGet(F.sel); if (!el) return;
+  if (a === 'editpts') { const raw = el.getAttribute('data-pts') || ''; if (!raw) return; if (el.getAttribute('transform')) { toast('Esta forma foi mexida (movida ou rodada): os pontos aparecem onde estavam.'); } F.pts = raw.split(';').map((q) => { const v = q.split(','); return { x: +v[0], y: +v[1], c: v[2] === '1' }; }); F.closed = el.getAttribute('data-closed') !== '0'; F.smooth = el.getAttribute('data-smooth') !== '0'; F.editing = { path: F.sel }; F.sel = null; F.tool = 'poly'; renderSheet(true); return; }
   if (a === 'copy') { const f = el.getAttribute('fill'), s = el.getAttribute('stroke'), w = el.getAttribute('stroke-width'); if (f && /^#[0-9a-f]{6}$/i.test(f)) { F.fill = f.toUpperCase(); F.noFill = false; } else if (f === 'none') F.noFill = true; if (s && /^#[0-9a-f]{6}$/i.test(s)) { F.stroke = s.toUpperCase(); F.noStroke = false; } else if (s === 'none') F.noStroke = true; if (w && !isNaN(+w)) F.sw = +w; renderSheet(true); return; }
   frSnap();
   const b = frBox(el), c = b.cx + ' ' + b.cy, ac = (t) => frPre(el, 'translate(' + c + ') ' + t + ' translate(' + -b.cx + ' ' + -b.cy + ')');
@@ -2426,16 +2461,23 @@ function frUndo(redo) {
 document.addEventListener('click', (ev) => {
   const Z = S.designer; if (!Z || !Z.free || !Z.useFree) return;
   const t = ev.target.closest('button'); if (!t) return; const F = Z.free;
-  if (t.dataset.frTool) { F.tool = t.dataset.frTool; if (F.tool !== 'poly') F.pts = null; renderSheet(true); return; }
+  if (t.dataset.frTool) { F.tool = t.dataset.frTool; if (F.tool !== 'poly') { F.pts = null; F.editing = null; } renderSheet(true); return; }
   if (t.dataset.frView) { F.view = t.dataset.frView; F.sel = null; renderSheet(true); return; }
   if (t.dataset.frToggle) { const k = t.dataset.frToggle; F[k] = !F[k]; renderSheet(true); return; }
   if (t.dataset.frAct) { frAct(t.dataset.frAct); return; }
   if (t.dataset.frPal) { if (F.longPal) { F.longPal = false; return; } F.fill = t.dataset.frPal; F.noFill = false; renderSheet(true); return; }
-  if (t.dataset.frZoom) { const z = t.dataset.frZoom; F.zoom = z === '1' ? 1 : Math.max(1, Math.min(8, F.zoom * (z === 'in' ? 1.6 : 1 / 1.6))); const sel = frGet(F.sel); if (sel && z === 'in') { const b = frBox(sel); F.cx = b.cx; F.cy = b.cy; } if (F.zoom === 1) { F.cx = 200; F.cy = 200; } renderSheet(true); return; }
+  if (t.dataset.frZoom) { const z = t.dataset.frZoom; F.zoom = z === '1' ? 1 : Math.max(1, Math.min(12, F.zoom * (z === 'in' ? 1.6 : 1 / 1.6))); const sel = frGet(F.sel); if (sel && z === 'in') { const b = frBox(sel); F.cx = b.cx; F.cy = b.cy; } if (F.zoom === 1) { F.cx = 200; F.cy = 200; } renderSheet(true); return; }
   if (t.hasAttribute('data-fr-undo')) { frUndo(false); return; }
   if (t.hasAttribute('data-fr-redo')) { frUndo(true); return; }
-  if (t.hasAttribute('data-fr-polycancel')) { F.pts = null; renderSheet(true); return; }
-  if (t.hasAttribute('data-fr-polydone')) { const pts = F.pts || []; F.pts = null; if (pts.length < 2) return; const d = F.smooth ? frSmooth(pts, F.closed) : 'M' + pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : ''); frAdd('<path d="' + d + '" ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return; }
+  if (t.hasAttribute('data-fr-polycancel')) { F.pts = null; F.editing = null; renderSheet(true); return; }
+  if (t.hasAttribute('data-fr-polydone')) {
+    const pts = F.pts || []; F.pts = null; if (pts.length < 2) return;
+    const d = F.smooth ? frSmooth(pts, F.closed) : 'M' + pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '');
+    const keep = ' data-pts="' + pts.map((p) => p.x + ',' + p.y + (p.c ? ',1' : '')).join(';') + '" data-closed="' + (F.closed ? 1 : 0) + '" data-smooth="' + (F.smooth ? 1 : 0) + '"';
+    if (F.editing) { const old = frGet(F.editing.path); F.editing = null; if (old) { frSnap(); old.setAttribute('d', d); old.setAttribute('data-pts', pts.map((p) => p.x + ',' + p.y + (p.c ? ',1' : '')).join(';')); old.setAttribute('data-closed', F.closed ? 1 : 0); old.setAttribute('data-smooth', F.smooth ? 1 : 0); F.sel = frPathOf(old); frCommit(); return; } }
+    frAdd('<path d="' + d + '"' + keep + ' ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return;
+  }
+  if (t.hasAttribute('data-fr-polyundo')) { if (F.pts && F.pts.length) F.pts.pop(); renderSheet(true); return; }
   if (t.hasAttribute('data-fr-reset')) { frSnap(); F.src[F.view] = frParse(genSvg(Z.d, F.view === 'open')); F.sel = null; renderSheet(true); return; }
   if (t.hasAttribute('data-fr-clear')) { frSnap(); F.src[F.view] = ''; F.sel = null; renderSheet(true); return; }
 });
