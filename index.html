@@ -2233,7 +2233,7 @@ function frParse(svgText) {
 }
 const frSvg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400">' + inner + '</svg>';
 function frInit(Z) {
-  const F = Z.free = { corner: false, view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
+  const F = Z.free = { keepRatio: true, snap: false, corner: false, view: 'closed', src: { closed: '', open: '' }, hist: [], fut: [], sel: null, tool: 'select', fill: Z.d.color || '#888888', stroke: '#2B2B2B', sw: 4, noFill: false, noStroke: false, closed: true, smooth: true, deep: false, under: false, uop: 45, zoom: 1, cx: 200, cy: 200, pts: null, text: '', fs: 34, loading: true };
   const p = Z.mode === 'edit' && pieceById(Z.id);
   const fromIcon = async (id) => { const u = id && blob(id); if (!u) return ''; try { return frParse(await (await fetch(u)).text()); } catch (e) { return ''; } };
   (async () => {
@@ -2293,13 +2293,13 @@ function frHtml(Z) {
     + '<g id="fr-root"' + (under ? ' opacity="' + (1 - F.uop / 200) + '"' : '') + '>' + F.src[F.view] + '</g><g id="fr-ui" pointer-events="none"></g></svg>'
     + '<div class="fr-zoom"><button data-fr-zoom="out" aria-label="Diminuir zoom">−</button><span id="fr-zl">' + Math.round(F.zoom * 100) + '%</span><button data-fr-zoom="in" aria-label="Aumentar zoom">+</button><button data-fr-zoom="1" aria-label="Ver tudo">⤢</button></div></div>';
   h += '<div class="chips fr-tools" style="flex-wrap:wrap">' + FR_TOOLS.map(([k, l]) => btn('data-fr-tool="' + k + '"', l, F.tool === k)).join('') + '</div>';
-  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos. Toca num ponto para o trocar entre curva (●) e bico (■); arrasta-o para o mover. No fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
+  const tip = { select: 'Toca numa parte para a escolher e arrasta para a mover. Puxa os quadrados da moldura para mudar o tamanho (cantos: tudo; lados: só largura ou altura) e o círculo de cima para rodar.', pen: 'Desenha à mão livre. O traço fica suavizado.', poly: 'Toca para pôr pontos. Toca num ponto para o trocar entre curva (●) e bico (■); arrasta-o para o mover. No fim carrega em «Concluir forma».', line: 'Arrasta de uma ponta à outra.', rect: 'Arrasta para desenhar o retângulo.', ellipse: 'Arrasta para desenhar a elipse.', text: 'Escreve o texto em baixo e toca no desenho onde o queres pôr.', bucket: 'Toca numa parte para a pintar com a cor de preenchimento (contorno, se escolheres «Sem preenchimento»).', pan: 'Arrasta para mover a vista quando tens zoom.' };
   h += '<p class="status" style="font-size:13px;margin:0">' + tip[F.tool] + '</p>';
   if (F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="corner"', 'Próximos pontos em bico', F.corner) + btn('data-fr-polyundo', 'Apagar último ponto', undefined, F.pts && F.pts.length ? '' : ' disabled') + '</div>'
     + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fr-polycancel' + (F.pts && F.pts.length ? '' : ' disabled') + '>Cancelar</button><button class="btn primary" data-fr-polydone' + (F.pts && F.pts.length >= 2 ? '' : ' disabled') + '>' + (F.editing ? 'Guardar pontos' : 'Concluir forma') + ' (' + (F.pts ? F.pts.length : 0) + ')</button></div>';
   if (F.tool === 'text') h += '<div class="row" style="flex-wrap:nowrap"><input id="fr-text" type="text" placeholder="Texto" value="' + esc(F.text) + '" style="flex:2"><label class="field" style="flex:1">Tamanho<input type="number" id="fr-fs" min="6" max="200" value="' + F.fs + '"></label></div>';
   if (F.tool === 'pen' || F.tool === 'poly') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="closed"', 'Fechar e pintar a forma', F.closed) + (F.tool === 'poly' ? btn('data-fr-toggle="smooth"', 'Curvas suaves', F.smooth) : '') + '</div>';
-  if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="deep"', 'Escolher partes dentro de grupos', F.deep) + '</div>';
+  if (F.tool === 'select') h += '<div class="chips" style="flex-wrap:wrap">' + btn('data-fr-toggle="deep"', 'Escolher partes dentro de grupos', F.deep) + btn('data-fr-toggle="keepRatio"', 'Cantos mantêm as proporções', F.keepRatio) + btn('data-fr-toggle="snap"', 'Rodar de 15 em 15°', F.snap) + '</div>';
   // colours
   const pal = frColors();
   h += '<div class="fr-colors"><label>Preenchimento<input type="color" id="fr-fill" value="' + F.fill + '"></label>' + btn('data-fr-toggle="noFill"', 'Sem preenchimento', F.noFill)
@@ -2324,12 +2324,23 @@ function frHtml(Z) {
   if (F.under) h += '<label class="field" for="fr-uop">Transparência da foto<input id="fr-uop" type="range" min="10" max="90" step="5" value="' + F.uop + '"></label>';
   return h + '</div>';
 }
+function frHandles(b, zoom, withHandles) { // selection frame; in «Selecionar» also the resize/rotate handles
+  const k = zoom, x0 = b.x - 3 / k, y0 = b.y - 3 / k, x1 = b.x + b.w + 3 / k, y1 = b.y + b.h + 3 / k, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  let h = '<rect x="' + x0 + '" y="' + y0 + '" width="' + (x1 - x0) + '" height="' + (y1 - y0) + '" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>';
+  if (!withHandles) return h;
+  const s = 5.5 / k, hit = 15 / k, ry = y0 - 26 / k;
+  const P = { nw: [x0, y0], n: [mx, y0], ne: [x1, y0], e: [x1, my], se: [x1, y1], s: [mx, y1], sw: [x0, y1], w: [x0, my] };
+  h += '<path d="M' + mx + ' ' + y0 + ' L' + mx + ' ' + ry + '" stroke="#1E88E5" stroke-width="' + 1.5 / k + '"/>';
+  Object.keys(P).forEach((n) => { const [x, y] = P[n]; h += '<rect x="' + (x - s) + '" y="' + (y - s) + '" width="' + 2 * s + '" height="' + 2 * s + '" fill="#fff" stroke="#1E88E5" stroke-width="' + 1.6 / k + '"/><circle cx="' + x + '" cy="' + y + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="' + n + '" style="cursor:' + n + '-resize"/>'; });
+  h += '<circle cx="' + mx + '" cy="' + ry + '" r="' + 6.5 / k + '" fill="#1E88E5" stroke="#fff" stroke-width="' + 1.6 / k + '"/><circle cx="' + mx + '" cy="' + ry + '" r="' + hit + '" fill="transparent" pointer-events="all" data-h="rot" style="cursor:grab"/>';
+  return h;
+}
 function frMount() {
   const Z = S.designer, F = Z && Z.free, svg = document.getElementById('fr-svg'); if (!F || !svg) return;
   const ui = document.getElementById('fr-ui');
   const sel = frGet(F.sel);
   if (F.sel && !sel) F.sel = null;
-  if (sel) { const b = frBox(sel), k = 400 / (400 / F.zoom); ui.innerHTML = '<rect x="' + (b.x - 3) + '" y="' + (b.y - 3) + '" width="' + (b.w + 6) + '" height="' + (b.h + 6) + '" fill="none" stroke="#1E88E5" stroke-width="' + 2 / k + '" stroke-dasharray="' + 6 / k + ' ' + 4 / k + '"/>'; }
+  if (sel) ui.innerHTML = frHandles(frBox(sel), F.zoom, F.tool === 'select');
   const drawPts = () => { if (!(F.tool === 'poly' && F.pts && F.pts.length)) return ''; const z = 1 / F.zoom, r = 5 * z;
     return '<path d="' + (F.pts.length > 1 ? (F.smooth ? frSmooth(F.pts, F.closed && F.pts.length > 2) : 'M' + F.pts.map((p) => p.x + ' ' + p.y).join(' L') + (F.closed ? ' Z' : '')) : '') + '" fill="' + (F.closed && !F.noFill ? F.fill : 'none') + '" fill-opacity=".35" stroke="#1E88E5" stroke-width="' + 2 * z + '"/>'
       + F.pts.map((p, i) => p.c ? '<rect x="' + (p.x - r) + '" y="' + (p.y - r) + '" width="' + 2 * r + '" height="' + 2 * r + '" fill="#E8553D" stroke="#fff" stroke-width="' + 1.5 * z + '"/>' : '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + (i === F.pts.length - 1 ? '#0D47A1' : '#1E88E5') + '" stroke="#fff" stroke-width="' + 1.5 * z + '"/>').join(''); };
@@ -2354,6 +2365,9 @@ function frMount() {
     if (ev.button > 0 || pinch) return; ev.preventDefault();
     const p = frPt(ev); svg.setPointerCapture(ev.pointerId);
     if (F.tool === 'pan') { drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, cx: F.cx, cy: F.cy, k: 400 / F.zoom / svg.getBoundingClientRect().width }; return; }
+    if (F.tool === 'select' && ev.target.dataset && ev.target.dataset.h && frGet(F.sel)) {
+      const el = frGet(F.sel); drag = { kind: 'handle', h: ev.target.dataset.h, el, b: frBox(el), p, base: el.getAttribute('transform') || '', before: F.src[F.view], moved: false }; return;
+    }
     if (F.tool === 'select' || F.tool === 'bucket') {
       let t = ev.target; if (t.dataset && t.dataset.frBg) t = null;
       const root = document.getElementById('fr-root'); if (t && !root.contains(t)) t = null;
@@ -2376,6 +2390,22 @@ function frMount() {
     if (!drag || pinch) return; const p = frPt(ev);
     if (drag.kind === 'pt') { const q = F.pts[drag.i]; if (Math.hypot(p.x - drag.p.x, p.y - drag.p.y) > 1.5 / F.zoom) drag.moved = true; if (drag.moved) { q.x = p.x; q.y = p.y; ui.innerHTML = drawPts(); } return; }
     if (drag.kind === 'polyadd') return;
+    if (drag.kind === 'handle') {
+      const g = drag, b = g.b, h = g.h, r1 = (n) => Math.round(n * 1000) / 1000; let t;
+      if (h === 'rot') {
+        const cx = b.cx, cy = b.cy; let a = (Math.atan2(p.y - cy, p.x - cx) - Math.atan2(g.p.y - cy, g.p.x - cx)) * 180 / Math.PI;
+        if (F.snap) a = Math.round(a / 15) * 15;
+        t = 'rotate(' + Math.round(a * 10) / 10 + ' ' + r1(cx) + ' ' + r1(cy) + ')';
+      } else {
+        const ax = h.includes('w') ? b.x + b.w : h.includes('e') ? b.x : b.cx, ay = h.includes('n') ? b.y + b.h : h.includes('s') ? b.y : b.cy;
+        const ox = h.includes('w') ? b.x : h.includes('e') ? b.x + b.w : b.cx, oy = h.includes('n') ? b.y : h.includes('s') ? b.y + b.h : b.cy;
+        let sx = h === 'n' || h === 's' ? 1 : (p.x - ax) / ((ox - ax) || 1), sy = h === 'e' || h === 'w' ? 1 : (p.y - ay) / ((oy - ay) || 1);
+        if (h.length === 2 && F.keepRatio) { const s = Math.hypot(p.x - ax, p.y - ay) / (Math.hypot(ox - ax, oy - ay) || 1); sx = sy = s; }
+        sx = Math.max(0.05, sx); sy = Math.max(0.05, sy);
+        t = 'translate(' + r1(ax) + ' ' + r1(ay) + ') scale(' + r1(sx) + ' ' + r1(sy) + ') translate(' + r1(-ax) + ' ' + r1(-ay) + ')';
+      }
+      g.moved = true; g.el.setAttribute('transform', (t + ' ' + g.base).trim()); ui.innerHTML = frHandles(frBox(g.el), F.zoom, false); return;
+    }
     if (drag.kind === 'pan') { F.cx = drag.cx - (ev.clientX - drag.sx) * drag.k; F.cy = drag.cy - (ev.clientY - drag.sy) * drag.k; const vw = 400 / F.zoom; F.cx = Math.max(vw / 2, Math.min(400 - vw / 2, F.cx)); F.cy = Math.max(vw / 2, Math.min(400 - vw / 2, F.cy)); svg.setAttribute('viewBox', (F.cx - vw / 2) + ' ' + (F.cy - vw / 2) + ' ' + vw + ' ' + vw); return; }
     if (drag.kind === 'move') { const dx = p.x - drag.p.x, dy = p.y - drag.p.y; if (Math.abs(dx) + Math.abs(dy) > 0.6) drag.moved = true; if (drag.moved) { drag.el.setAttribute('transform', ('translate(' + Math.round(dx * 10) / 10 + ' ' + Math.round(dy * 10) / 10 + ') ' + drag.base).trim()); const b = frBox(drag.el); ui.firstChild && (ui.firstChild.setAttribute('x', b.x - 3), ui.firstChild.setAttribute('y', b.y - 3)); } return; }
     const a = drag.p; let d = '';
@@ -2391,6 +2421,7 @@ function frMount() {
     if (g && g.kind === 'polyadd') { const p = frPt(ev); F.pts = (F.pts || []).concat([{ x: p.x, y: p.y, c: F.corner }]); renderSheet(true); return; }
     if (!g) return;
     if (g.kind === 'pan') return;
+    if (g.kind === 'handle') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; frCommit(); } else renderSheet(true); return; }
     if (g.kind === 'move') { if (g.moved) { F.hist.push(F.view + '\u0000' + g.before); F.fut = []; F.sel = frPathOf(g.el); frCommit(); } else renderSheet(true); return; }
     const a = g.p, p = g.end; const r1 = (n) => Math.round(n * 10) / 10;
     if (g.kind === 'pen') { if (g.pts.length < 2) { ui.innerHTML = ''; return; } const pts = frSimplify(g.pts, 3); frAdd('<path d="' + frSmooth(pts, F.closed) + '" ' + frAttr(Object.assign({}, F, { noFill: F.noFill || !F.closed })) + '/>'); return; }
