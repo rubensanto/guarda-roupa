@@ -1653,18 +1653,20 @@ function fitPieceRow(lists) {
 const hasAll = (o) => (S.fitPieces || []).filter((id) => pieceById(id)).every((id) => (o.pieces || []).includes(id));
 function viewFits() {
   const hist = S.fitsView === 'hist';
-  let h = '<div class="top"><div class="head"><p class="eyebrow">' + activeFits().length + ' fits</p><h1>Fits</h1></div><button class="ibtn" data-build aria-label="Criar o meu fit" title="Criar o meu fit">' + I('plus', 20) + '</button></div>'
+  // «Os meus fits» = só os que já usei; os que nunca usei só aparecem em «Propor fits»
+  const usedFits = activeFits().filter((f) => fitDays(f).length > 0);
+  let h = '<div class="top"><div class="head"><p class="eyebrow">' + usedFits.length + (usedFits.length === 1 ? ' fit usado' : ' fits usados') + '</p><h1>Fits</h1></div><button class="ibtn" data-build aria-label="Criar o meu fit" title="Criar o meu fit">' + I('plus', 20) + '</button></div>'
     + '<button class="bigbtn" data-prop-open>' + I('sparkles', 22) + 'Propor fits para hoje</button>'
     + '<div class="seg" role="group" aria-label="Ver"><button data-fitsview="fits" aria-pressed="' + !hist + '">' + I('star', 16) + 'Os meus fits</button><button data-fitsview="hist" aria-pressed="' + hist + '">' + I('history', 16) + 'Histórico</button></div>';
   if (!hist) {
     const ff = S.fitFilter;
     const bySel = (S.fitPieces || []).length > 0;
-    const list = activeFits().filter((f) => (ff === 'all' || (ff === 'gosto' ? f.status === 'gosto' : KINDS[ff] ? kindOf(f) === ff : f.source === 'eu')) && hasAll(f))
+    const list = usedFits.filter((f) => (ff === 'all' || (ff === 'gosto' ? f.status === 'gosto' : KINDS[ff] ? kindOf(f) === ff : f.source === 'eu')) && hasAll(f))
       .sort((a, b) => bySel ? (b.rating ?? -1) - (a.rating ?? -1) || fitDays(b).length - fitDays(a).length : 0);
-    h += fitPieceRow(activeFits());
+    h += fitPieceRow(usedFits);
     h += '<div class="chips" role="group" aria-label="Mostrar">'
       + [['all', 'Todos', ''], ['gosto', 'Guardados', 'heart'], ['eu', 'Meus', 'edit'], ['treino', 'Treino', 'dumbbell'], ['jogo', 'Jogo', 'ball']].map(([k, l, ic]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (ff === k) + '">' + (ic ? I(ic, 15) : '') + l + '</button>').join('') + '</div>';
-    let body = list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (bySel ? 'Nenhum fit com estas peças.' : ff === 'all' ? 'Sem fits. Cria os teus com ＋ ou pede propostas.' : 'Nada aqui ainda.') + '</div>';
+    let body = list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (bySel ? 'Nenhum fit com estas peças.' : ff === 'all' ? 'Ainda não usaste nenhum fit. Escolhe um em «Propor fits para hoje» ou cria o teu com ＋.' : 'Nada aqui ainda.') + '</div>';
     if (ff === 'jogo') body = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Fits de jogo</span>' + body + '</div>';
     return h + '<section class="stack" aria-label="Fits">' + body + '</section>';
   }
@@ -1859,6 +1861,10 @@ function builderHtml() {
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
     + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
+  if (creating && bk === 'jogo') { // no jogo só entra o que está marcado «FC Porto»: avisa o que falta marcar
+    const has = (gr) => groups.some((g) => g.s.group === gr), miss = [!has('top') && 'parte de cima', !has('bottom') && 'calças ou calções', !has('shoe') && 'calçado'].filter(Boolean);
+    if (miss.length) h += '<p class="note">Num fit de jogo só aparecem as peças marcadas «FC Porto». Ainda não tens ' + miss.join(' nem ') + ' do Porto: abre no Armário as que levas ao jogo e marca «FC Porto» além de «Casual».</p>';
+  }
   h += groups.map((g) => '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + g.s.label + '</h3><span class="eyebrow" style="font-size:12px">' + hint[g.s.group] + '</span></div><div class="pickrow">'
     + g.ps.map((p) => { const on = B.sel.includes(p.id); return '<button class="pick" data-bpick="' + esc(p.id) + '" aria-pressed="' + on + '"><span class="pic"><img src="' + pieceSrc(p) + '" alt=""></span><span>' + esc(p.name) + '</span></button>'; }).join('')
     + '</div></div>').join('');
@@ -1883,10 +1889,11 @@ function baseBuilder(id) { // new fit that starts as a copy of an existing one (
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function bCreating(B) { return !!B && !B.editDay && !B.editFit; } // only when creating a fit are the pieces limited to its kind
-function bAllowed(p, kind) { // pieces a new fit of this kind can use: treino = roupa de treino (normal só numa vaga obrigatória sem nada de treino); normal e jogo = tudo menos a de treino
-  if (kind !== 'treino') return !isTreino(p);
+function bAllowed(p, kind) { // as mesmas peças que as propostas usam: normal = só casual; jogo = só FC Porto; treino = roupa de treino (casual só numa vaga obrigatória sem nada de treino)
+  if (kind === 'jogo') return isPorto(p);
+  if (kind !== 'treino') return isCasual(p);
   const g = groupOf(p);
-  return isTreino(p) || (['top', 'bottom', 'shoe'].includes(g) && !S.pieces.some((q) => isTreino(q) && groupOf(q) === g));
+  return isTreino(p) || (isCasual(p) && ['top', 'bottom', 'shoe'].includes(g) && !S.pieces.some((q) => isTreino(q) && groupOf(q) === g));
 }
 function bSwitchKind(k) { // creating: changing the kind clears the fit; going back to a kind brings back what was picked there (same builder only)
   const B = S.builder, cur = KINDS[B.kind] ? B.kind : 'normal';
