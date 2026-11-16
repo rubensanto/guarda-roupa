@@ -261,6 +261,16 @@ nav.tabs svg{width:24px;height:24px}
 .mini-col{flex-direction:column;flex-wrap:nowrap;gap:6px}
 .mini-col button{width:52px;height:52px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 .mini-col button img{width:80%;height:80%;object-fit:contain}
+.dgroup{grid-column:1/-1}
+.dgroup .dg-n{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.dg-row{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:16px;margin:0 -16px;padding:0 16px 4px;scrollbar-width:thin}
+.dg-o{flex:1 0 140px;max-width:260px;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;align-items:center;background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:10px 8px}
+.dg-k{margin:0;display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;align-self:flex-start}
+.dg-d{display:flex;justify-content:center}
+.dg-m{justify-content:center;gap:5px}
+.dg-m button{width:34px;height:34px;padding:0;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.dg-m button img{width:80%;height:80%;object-fit:contain}
+.dg-r{gap:6px;flex-wrap:wrap;justify-content:center}
 .viewer{position:fixed;inset:0;z-index:40;background:#0B0C0C;color:#F2F2EF;display:flex;flex-direction:column}
 .viewer[hidden],#sheet[hidden]{display:none!important}
 .vtop{display:flex;justify-content:space-between;align-items:center;padding-top:calc(10px + env(safe-area-inset-top,0px));padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-size:13px;color:#B9BCB9;font-variant-numeric:tabular-nums}
@@ -1613,6 +1623,21 @@ function dayCard(d) {
     + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + miniCol(ps) + '</div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
+// vários outfits no mesmo dia: um cartão com a data e os outfits lado a lado (fila com scroll se não couberem)
+function dayGroupCard(ds) {
+  if (ds.length === 1) return dayCard(ds[0]);
+  ds = ds.slice().sort((a, b) => (a.slot || 1) - (b.slot || 1));
+  const date = ds[0].date, g = ds.some((d) => kindOf(d) === 'jogo') ? S.games.find((x) => x.date === date) : null;
+  return '<div class="card dgroup"><div class="sec"><h3>' + I('calendar', 17) + esc(fmtDay(date)) + '</h3><span class="dg-n">' + ds.length + ' outfits</span></div>'
+    + (g ? '<p class="meta-line">' + I('ball', 15) + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : '')
+    + '<div class="dg-row">' + ds.map((d) => {
+      const ps = (d.pieces || []).map(pieceById).filter(Boolean), f = dayFit(d), k = kindOf(d);
+      return '<div class="dg-o"><p class="dg-k">' + I(KIND_IC[k], 15) + KIND_SHORT[k] + '</p>'
+        + '<div class="dg-d">' + dressedHtml(uids(d), 120, d.closed, d.opened) + '</div>'
+        + '<div class="mini dg-m">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
+        + (f && typeof f.rating === 'number' ? '<div class="rate-top dg-r">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
+    }).join('') + '</div></div>';
+}
 
 // procurar fits por peça: escolho uma ou mais peças e vejo os fits (ou os dias) que as têm todas, os mais bem avaliados primeiro
 function fitPieceRow(lists) {
@@ -1649,10 +1674,13 @@ function viewFits() {
   const cnt = (k) => allPast.filter((d) => k === 'all' || kindOf(d) === k).length;
   h += '<div class="chips" role="group" aria-label="Histórico por tipo">' + [['all', 'Todos']].concat(Object.keys(KINDS).map((k) => [k, KIND_SHORT[k]])).map(([k, l]) => '<button class="chip" data-histkind="' + k + '" aria-pressed="' + (hk === k) + '">' + (KIND_IC[k] ? I(KIND_IC[k], 15) : '') + l + ' <span style="opacity:.6">' + cnt(k) + '</span></button>').join('') + '</div>'
     + '<p class="meta-line" id="past-h">' + I('calendar', 15) + past.length + (past.length === 1 ? ' outfit' : ' outfits') + (past.length ? ' · ' + nDates(past) + (nDates(past) === 1 ? ' dia' : ' dias') : '') + '</p>';
-  let body = past.length ? past.slice(0, shownN).map(dayCard).join('') : '<div class="empty">' + (hk === 'all' ? 'Nada registado ainda.' : 'Ainda não tens outfits ' + (hk === 'treino' ? 'de treino' : hk === 'jogo' ? 'de dia de jogo' : 'normais') + ' registados.') + '</div>';
+  // não partir um dia ao meio: mostra todos os outfits das datas dos primeiros shownN
+  const shownDates = new Set(past.slice(0, shownN).map((d) => d.date)), shown = past.filter((d) => shownDates.has(d.date));
+  const groups = []; shown.forEach((d) => { const g = groups[groups.length - 1]; if (g && g[0].date === d.date) g.push(d); else groups.push([d]); });
+  let body = past.length ? groups.map(dayGroupCard).join('') : '<div class="empty">' + (hk === 'all' ? 'Nada registado ainda.' : 'Ainda não tens outfits ' + (hk === 'treino' ? 'de treino' : hk === 'jogo' ? 'de dia de jogo' : 'normais') + ' registados.') + '</div>';
   if (hk === 'jogo') body = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Dias de jogo</span>' + body + '</div>';
   h += '<section class="stack" aria-label="Histórico">' + body + '</section>';
-  if (past.length > shownN) h += '<button class="btn" data-hist-more>' + I('chev') + 'Mostrar mais (' + (past.length - shownN) + ')</button>';
+  if (past.length > shown.length) h += '<button class="btn" data-hist-more>' + I('chev') + 'Mostrar mais (' + (past.length - shown.length) + ')</button>';
   return h;
 }
 
