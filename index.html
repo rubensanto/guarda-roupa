@@ -262,6 +262,7 @@ nav.tabs svg{width:24px;height:24px}
 .mini-col button{width:52px;height:52px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 .mini-col button img{width:80%;height:80%;object-fit:contain}
 .dgroup{grid-column:1/-1}
+.dg-one{border:1.5px solid var(--dg-b,#D6D6D0);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:12px}
 .dgroup .dg-n{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
 .dg-row{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:16px;margin:0 -16px;padding:0 16px 4px;scrollbar-width:thin}
 .dg-o{flex:1 0 140px;max-width:260px;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;align-items:center;background:transparent;border:1.5px solid var(--dg-b,#D6D6D0);border-radius:16px;padding:10px 8px}
@@ -1620,8 +1621,8 @@ function dayCard(d) {
   const g = k === 'jogo' ? S.games.find((x) => x.date === d.date) : null;
   return '<div class="card"><div class="sec"><h3>' + I(KIND_IC[k], 17) + esc(fmtDay(d.date)) + '</h3></div>'
     + (g ? '<p class="meta-line">' + I('ball', 15) + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : '')
-    + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + miniCol(ps) + '</div>'
-    + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
+    + '<div class="dg-one"><div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + miniCol(ps) + '</div>'
+    + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div></div>';
 }
 // vários outfits no mesmo dia: um cartão com a data e os outfits lado a lado (fila com scroll se não couberem)
 function dayGroupCard(ds) {
