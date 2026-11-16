@@ -8,13 +8,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#F4F4F2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121413" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F7F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F0F10" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
 #login{position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 48px) 20px 40px}
 #login .lg{width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px}
@@ -28,41 +28,42 @@ img{max-width:100%}
 *,*::before,*::after{box-sizing:border-box}
 /* Layout: one-screen phone app, scrolling content between a header and a fixed bottom tab bar */
 :root{
-  --bg:#F4F4F2; --surface:#FFFFFF; --sunk:#EBEBE7; --line:#E0E0DA; --fg:#171717; --muted:#5C5C56;
-  --accent:#1F5C4A; --accent-ink:#FFFFFF; --accent-soft:#E1EDE8; --accent-soft-ink:#1C4A3C; --accent-mid:#7FB3A0;
-  --new:#FBE6DC; --new-ink:#8A3412; --tile:#FFFFFF; --star:#D98E04; --star-off:#D6D6D0;
-  --font-display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --bg:#F7F7F5; --surface:#FFFFFF; --sunk:#F0F0EC; --line:#E8E8E3; --fg:#141414; --muted:#6E6E68;
+  --accent:#141414; --accent-ink:#FFFFFF; --accent-soft:#F0F0EC; --accent-soft-ink:#141414; --accent-mid:#A3A39D;
+  --new:#FCEDE6; --new-ink:#9A3B12; --tile:#FFFFFF; --star:#E0A100; --star-off:#E1E1DC;
+  --fcp:#0A3A8C; --ok:#1F7A55;
+  --font-display:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;
   --font-body:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#121413; --surface:#1C1F1E; --sunk:#262A28; --line:#323735; --fg:#EFEFEC; --muted:#A3A8A5;
-  --accent:#5FB898; --accent-ink:#0E1A16; --accent-soft:#1E3530; --accent-soft-ink:#B5E3D1; --accent-mid:#3E7D69;
-  --new:#3A2418; --new-ink:#F6C2A6; --tile:#F2F2EF; --star:#F2B23A; --star-off:#45494A; color-scheme:dark}}
+  --bg:#0F0F10; --surface:#18181A; --sunk:#222225; --line:#2C2C30; --fg:#F2F2EF; --muted:#9C9C97;
+  --accent:#F2F2EF; --accent-ink:#111112; --accent-soft:#242428; --accent-soft-ink:#EDEDEA; --accent-mid:#5A5A5E;
+  --new:#3A2418; --new-ink:#F6C2A6; --tile:#F4F4F1; --star:#F2B23A; --star-off:#3C3C40; --fcp:#7FA6E8; --ok:#6CC9A0; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#121413; --surface:#1C1F1E; --sunk:#262A28; --line:#323735; --fg:#EFEFEC; --muted:#A3A8A5;
-  --accent:#5FB898; --accent-ink:#0E1A16; --accent-soft:#1E3530; --accent-soft-ink:#B5E3D1; --accent-mid:#3E7D69;
-  --new:#3A2418; --new-ink:#F6C2A6; --tile:#F2F2EF; --star:#F2B23A; --star-off:#45494A; color-scheme:dark}
+  --bg:#0F0F10; --surface:#18181A; --sunk:#222225; --line:#2C2C30; --fg:#F2F2EF; --muted:#9C9C97;
+  --accent:#F2F2EF; --accent-ink:#111112; --accent-soft:#242428; --accent-soft-ink:#EDEDEA; --accent-mid:#5A5A5E;
+  --new:#3A2418; --new-ink:#F6C2A6; --tile:#F4F4F1; --star:#F2B23A; --star-off:#3C3C40; --fcp:#7FA6E8; --ok:#6CC9A0; color-scheme:dark}
 html,body{height:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:0 auto}
-main{flex:1;overflow-y:auto;padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+main{flex:1;overflow-y:auto;padding-block:22px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
 main>*{flex-shrink:0}
 .eyebrow{margin:0;font-size:13px;color:var(--muted);font-weight:500}
-h1{margin:0;font-family:var(--font-display);font-size:30px;font-weight:700;letter-spacing:-.4px;text-wrap:balance}
-h2{margin:0;font-family:var(--font-display);font-size:19px;font-weight:700;text-wrap:balance}
+h1{margin:0;font-family:var(--font-display);font-size:30px;font-weight:700;letter-spacing:-.8px;text-wrap:balance}
+h2{margin:0;font-family:var(--font-display);font-size:17px;font-weight:650;letter-spacing:-.2px;text-wrap:balance}
 h3{margin:0;font-size:15px;font-weight:600}
 .head{display:flex;flex-direction:column;gap:2px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.btn{min-height:50px;border-radius:16px;border:1px solid var(--line);background:var(--surface);font-weight:600;padding:0 16px;display:flex;align-items:center;justify-content:center;gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.03);display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{min-height:46px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:15px;padding:0 16px;display:flex;align-items:center;justify-content:center;gap:8px}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn[disabled]{opacity:.5;cursor:default}
 .row{display:flex;gap:10px;flex-wrap:wrap}
 .row>.btn{flex:1 1 140px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
-.chip{flex:none;min-height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--line);background:var(--surface);font-weight:500;font-size:14px}
+.chip{flex:none;min-height:34px;padding:0 13px;border-radius:17px;border:1px solid var(--line);background:var(--surface);font-weight:500;font-size:14px;display:inline-flex;align-items:center;gap:6px}
 .chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .toolbar label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -75,7 +76,7 @@ select{min-height:38px;border-radius:12px;border:1px solid var(--line);backgroun
 .tile .name{font-size:14px;font-weight:600;padding-left:4px}
 .tile .sub{font-size:12px;color:var(--muted);padding-left:4px;font-variant-numeric:tabular-nums}
 .tile .sub.cold{color:var(--new-ink)}
-.note{margin:0;padding:12px 14px;border-radius:14px;background:var(--accent-soft);color:var(--accent-soft-ink);font-size:14px}
+.note{margin:0;padding:12px 14px;border-radius:14px;background:var(--sunk);color:var(--fg);font-size:14px}
 .empty{padding:22px 16px;border-radius:20px;border:2px dashed var(--line);color:var(--muted);text-align:center;font-size:14px;display:flex;flex-direction:column;gap:6px;align-items:center}
 .uploads{display:flex;flex-direction:column;gap:10px}
 .up{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px}
@@ -89,8 +90,8 @@ label.field{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weigh
 textarea,input[type="text"]{border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:10px 12px}
 textarea{min-height:64px;resize:vertical}
 .seg{display:flex;padding:3px;border-radius:14px;background:var(--sunk);gap:3px}
-.seg button{flex:1;min-height:40px;border:none;border-radius:11px;background:transparent;font-weight:500;font-size:14px}
-.seg button[aria-pressed="true"]{background:var(--surface);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.seg button{flex:1;min-height:38px;border:none;border-radius:11px;background:transparent;font-weight:500;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .status{font-size:14px;color:var(--muted);margin:0}
 .status.err{color:var(--new-ink);background:var(--new);padding:10px 12px;border-radius:12px}
 .stack{display:flex;flex-direction:column;gap:12px}
@@ -107,8 +108,8 @@ textarea{min-height:64px;resize:vertical}
 .rate-top b{font-variant-numeric:tabular-nums;font-size:15px;min-width:3.2em}
 .rate input[type=range]{width:100%;accent-color:var(--star);min-height:32px}
 /* tab bar */
-nav.tabs{display:flex;justify-content:space-around;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
-nav.tabs button{flex:1;min-height:52px;border:none;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;color:var(--muted)}
+nav.tabs{display:flex;justify-content:space-around;background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+nav.tabs button{flex:1;min-height:54px;border:none;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;color:var(--muted)}
 nav.tabs button[aria-current="page"]{color:var(--fg);font-weight:600}
 nav.tabs svg{width:24px;height:24px}
 /* sheets */
@@ -177,9 +178,9 @@ nav.tabs svg{width:24px;height:24px}
 .dress .dw{position:absolute;pointer-events:none}
 .dress .dw img{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
 .ltog{display:flex;flex-wrap:wrap;gap:6px}
-.wx{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:var(--sunk);font-size:14px}
+.wx{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);font-size:14px}
 .wx p{margin:0}
-.rank{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-ink);font-size:13px;font-weight:700;vertical-align:2px}
+.rank{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--fg);color:var(--bg);font-size:13px;font-weight:700;vertical-align:2px}
 .pick-fit .dress{border-radius:12px;margin:0 auto}
 .pick-fit{width:96px}
 .dress-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:#6A6A64}
@@ -204,9 +205,7 @@ nav.tabs svg{width:24px;height:24px}
 .kseg button{min-height:34px;font-size:13px}
 .badge.kb-treino{background:#E4EEDF;color:#3C5A2E}
 .badge.kb-jogo{background:#DCE6F5;color:#123E7C}
-.card.game{border-color:#123E7C;border-left-width:4px}
-.card.game h2{color:#123E7C}
-@media (prefers-color-scheme: dark){.badge.kb-treino{background:#2C3A26;color:#BFD9B2}.badge.kb-jogo{background:#1C2B44;color:#B9CCEE}.card.game{border-color:#6F96D8}.card.game h2{color:#B9CCEE}}
+@media (prefers-color-scheme: dark){.badge.kb-treino{background:#2C3A26;color:#BFD9B2}.badge.kb-jogo{background:#1C2B44;color:#B9CCEE}}
 .seg-sm button{min-height:36px;padding:0 12px;font-size:13px;flex:none}
 .fitview{display:flex;gap:12px;align-items:flex-start}
 .sidx{display:flex;align-items:baseline;gap:6px;width:100%;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-size:14px;color:var(--muted)}
@@ -271,6 +270,51 @@ nav.tabs svg{width:24px;height:24px}
 .vhint{margin:0;text-align:center;font-size:12px;color:#9A9E9B;padding-top:8px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
+
+/* ---------- redesenho minimal: ícones, cabeçalhos de secção, botões de ícone ---------- */
+.i{flex:none;display:block}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+.top .head{min-width:0}
+.ibtn{flex:none;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--surface);display:inline-flex;align-items:center;justify-content:center;padding:0;position:relative;color:var(--fg)}
+.ibtn.ghost{border-color:transparent;background:var(--sunk)}
+.ibtn[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.ibtn .dot{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:4px;background:var(--new-ink)}
+.ibtn.danger{color:var(--new-ink)}
+.sec{display:flex;align-items:center;gap:8px;min-width:0}
+.sec h2,.sec h3{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.sec .acts{display:flex;gap:6px;flex:none}
+.sec .eyebrow{flex:none}
+.bigbtn{min-height:58px;border-radius:18px;border:none;background:var(--fg);color:var(--bg);font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 18px;width:100%}
+.bigbtn small{font-weight:500;opacity:.7;font-size:13px}
+.btnrow{display:flex;gap:8px;align-items:center}
+.btnrow .btn{flex:1}
+.btnrow .btn.primary{flex:1.6}
+.meta-line{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:0;flex-wrap:wrap}
+.disc{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:none;background:none;padding:0;font-weight:600;font-size:15px;color:var(--fg);text-align:left}
+.disc .i:last-child{margin-left:auto;color:var(--muted);transition:transform .15s}
+.disc[aria-expanded="true"] .i:last-child{transform:rotate(180deg)}
+.backbtn{display:inline-flex;align-items:center;gap:4px;border:none;background:none;padding:0;font-weight:600;font-size:15px;color:var(--muted);min-height:36px;align-self:flex-start}
+.kseg button span{white-space:nowrap}
+.tags span{display:inline-flex;align-items:center;gap:4px}
+.card.outfit{gap:14px}
+.card.outfit .dress-c{display:flex;justify-content:center}
+.uprow{display:flex;gap:8px}
+/* riscas do Porto (aba de jogo) */
+.fcpz{background:repeating-linear-gradient(90deg,var(--fcp-b,#0A3A8C) 0 22px,#FFFFFF 22px 44px);border-radius:24px;padding:12px;display:flex;flex-direction:column;gap:12px}
+.fcpz>.pill{align-self:flex-start;background:#fff;color:#0A3A8C;font-weight:650;font-size:13px;padding:6px 12px;border-radius:12px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.fcpz>.card,.fcpz .card{box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.card.game{background:#fff;border:1px solid #DCE3EF;padding:0;overflow:hidden;gap:0}
+.card.game .gband{height:54px;background:repeating-linear-gradient(90deg,#0A3A8C 0 20px,#FFFFFF 20px 40px);display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #DCE3EF}
+.card.game .gband .pill{background:#fff;color:#0A3A8C;font-weight:650;font-size:13px;padding:6px 12px;border-radius:12px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.card.game .gin{background:#fff;color:#141414;padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.card.tight{padding:4px 14px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{background:#323237}}
+.card.game .gin h2{color:#0A3A8C;font-size:19px}
+.card.game .gin .eyebrow,.card.game .gin .meta-line{color:#5E6470}
+.card.game .gin .btn{background:#fff;color:#141414;border-color:#E2E5EA}
+.card.game .gin .btn.primary{background:#0A3A8C;color:#fff;border-color:#0A3A8C}
+.card.game .gin .note{background:#EEF2F8;color:#18253D}
+.kb-jogo .i{color:inherit}
 /* ---------- computador: menu lateral, conteúdo largo, janelas ao centro ---------- */
 @media (min-width:900px){
   html,body{height:100%}
@@ -293,6 +337,7 @@ nav.tabs svg{width:24px;height:24px}
   button{cursor:pointer}
 }
 @media (min-width:1400px){ .sheet{max-width:760px} }
+@media (min-width:900px){ .fcpz{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));align-items:start;gap:14px;padding:16px} .fcpz>.pill,.fcpz>.empty,.fcpz>.kpis,.fcpz>.meta-line{grid-column:1/-1} .fcpz>.pill{justify-self:start} .bigbtn{max-width:560px} }
 </style>
 </head>
 <body>
@@ -300,7 +345,7 @@ nav.tabs svg{width:24px;height:24px}
   <main id="main" aria-live="polite"></main>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <nav class="tabs" aria-label="Secções">
-    <button id="tab-hoje" data-tab="hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Hoje</button>
+    <button id="tab-hoje" data-tab="hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>Hoje</button>
     <button id="tab-armario" data-tab="armario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a2 2 0 1 1 2 2c-1 0-2 .7-2 1.7V8l9 7.5c.6.5.2 1.5-.6 1.5H3.6c-.8 0-1.2-1-.6-1.5L12 8"/></svg>Armário</button>
     <button id="tab-fits" data-tab="fits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.6L20.5 9l-4.4 4 1.2 6L12 16l-5.3 3 1.2-6-4.4-4 5.9-.4z"/></svg>Fits</button>
     <button id="tab-stats" data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Estatísticas</button>
@@ -751,6 +796,43 @@ const fmtDay = (iso) => { const d = parse(iso); return WEEK[d.getDay()] + ', ' +
 const fmtShort = (iso) => { const d = parse(iso); return d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 const ago = (n) => n === 0 ? 'hoje' : n === 1 ? 'ontem' : 'há ' + n + ' dias';
 const num = (x) => String(x).replace('.', ',');
+// ícones de linha (24×24, traço 1,8): I('nome', tamanho)
+const ICONS = {
+  sparkles: '<path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 15v5M16.5 17.5h5"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  heart: '<path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  chev: '<path d="M6 9l6 6 6-6"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>',
+  ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.6 2.6-1.4 4.2H9.8l-1.4-4.2z"/><path d="M12 7.5V3.2M15.6 10.1l4.2-1.4M14.2 14.3l2.6 3.6M9.8 14.3l-2.6 3.6M8.4 10.1L4.2 8.7"/>',
+  dumbbell: '<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>',
+  shirt: '<path d="M9 4l-5 2.5 1.8 4.2L8 10v10h8V10l2.2.7L20 6.5 15 4c-.4 1.7-1.6 2.6-3 2.6S9.4 5.7 9 4z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  cloud: '<path d="M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/>',
+  rain: '<path d="M7 15h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 6.5 4.3 4.3 0 0 0 7 15z"/><path d="M9 18l-1 2.5M13 18l-1 2.5M17 18l-1 2.5"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  star: '<path d="M12 3l2.6 5.6L20.5 9l-4.4 4 1.2 6L12 16l-5.3 3 1.2-6-4.4-4 5.9-.4z"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  pin: '<path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  tag: '<path d="M3.5 12.5V4h8.5l9 9-8.5 8.5z"/><circle cx="8" cy="8.5" r="1.4"/>',
+  hanger: '<path d="M12 4a2 2 0 1 1 2 2c-1 0-2 .7-2 1.7V8l9 7.5c.6.5.2 1.5-.6 1.5H3.6c-.8 0-1.2-1-.6-1.5L12 8"/>',
+  chart: '<path d="M5 20V11M12 20V5M19 20v-6"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  wand: '<path d="M4 20l11-11M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1zM19 11l.6 1.2 1.2.6-1.2.6L19 14.6l-.6-1.2-1.2-.6 1.2-.6z"/>',
+  history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/><path d="M12 8v4l3 2"/>',
+};
+const I = (n, s) => '<svg class="i" width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
+const KIND_IC = { normal: 'shirt', treino: 'dumbbell', jogo: 'ball' };
+const KIND_SHORT = { normal: 'Normal', treino: 'Treino', jogo: 'Jogo' };
 // camisola interior: an option of a fit / day (field `under`), not a piece of the wardrobe. It is drawn as the
 // innermost layer, so it only shows through whatever is open on top of it (half-zip, camisa, casaco).
 const UNDER = { 'tee-branca': ['T-shirt branca', 'curta', '#F6F5F1'], 'tee-preta': ['T-shirt preta', 'curta', '#1F1F21'], 'longa-branca': ['Manga comprida branca', 'comprida', '#F6F5F1'], 'longa-preta': ['Manga comprida preta', 'comprida', '#1F1F21'] };
@@ -810,38 +892,41 @@ function render() {
 }
 
 function buildBtn() {
-  return '<button class="btn" data-build style="border-style:dashed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Criar o meu fit</button>';
+  return '<button class="btn" data-build>' + I('plus') + 'Criar o meu fit</button>';
 }
+const miniCol = (ps) => '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>';
+const wxShort = (n) => (n.src === 'live' ? '' : '≈ ') + Math.round(n.feel) + ' °C';
+const wxIcon = (n) => n.rain ? 'rain' : n.w && n.w.code >= 3 ? 'cloud' : 'sun';
 
 function viewToday() {
-  const t = today();
-  const outs = outfitsOn(t);
-  const pending = S.uploads.length > 0 && !S.pieces.length;
-  let h = '<div class="head" style="flex-direction:row;justify-content:space-between;align-items:flex-end;gap:8px"><div><p class="eyebrow">' + esc(fmtDay(t)) + '</p><h1>Hoje</h1></div><button class="chip" data-data-open>Os teus dados' + (backupDue() ? ' •' : '') + '</button></div>';
-  if (backupDue()) h += '<p class="note" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>' + (lastBackup() ? 'Já passou uma semana desde a última cópia de segurança.' : 'Ainda não fizeste nenhuma cópia de segurança.') + '</span><button class="chip" data-data-open>Fazer</button></p>';
+  if (S.propOpen) return viewPropose();
+  const t = today(), outs = outfitsOn(t).filter((d) => (d.pieces || []).length);
+  let h = '<div class="top"><div class="head"><p class="eyebrow">' + esc(fmtDay(t)) + '</p><h1>Hoje</h1></div>'
+    + '<button class="ibtn" data-data-open aria-label="Os teus dados" title="Os teus dados">' + I('user', 20) + (backupDue() ? '<span class="dot"></span>' : '') + '</button></div>';
+  if (backupDue()) h += '<div class="note" style="display:flex;align-items:center;gap:10px">' + I('clock') + '<span style="flex:1">' + (lastBackup() ? 'Já passou uma semana desde a última cópia.' : 'Ainda não fizeste nenhuma cópia de segurança.') + '</span><button class="chip" data-data-open>Fazer</button></div>';
   h += gameHtml();
-  outs.filter((d) => (d.pieces || []).length).forEach((plan, i, all) => { h += outfitCard(plan, i, all.length); });
-  if (outs.length) h += '<button class="btn" data-add-outfit aria-pressed="' + S.adding + '" style="border-style:dashed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>' + (S.adding ? 'A escolher outro outfit para hoje · cancelar' : 'Outro outfit hoje') + '</button>';
-  h += topHtml();
-  h += '<section class="card" aria-labelledby="up-h"><h2 id="up-h">Foto ou vídeo do dia</h2>'
-    + '<div class="seg" role="group" aria-label="Tipo de envio">'
-    + '<button id="kind-vestido" data-kind="vestido" aria-pressed="' + (S.upKind === 'vestido') + '">Vestido (do dia)</button>'
-    + '<button id="kind-peca" data-kind="peca" aria-pressed="' + (S.upKind === 'peca') + '">Peça esticada</button></div>'
-    + '<p class="status">' + (S.upKind === 'vestido' ? 'Ao espelho, corpo inteiro, casaco aberto. Vídeo de 5 a 8 s ou foto.' : 'Peça nova esticada de frente, fundo liso e claro, luz de janela.') + '</p>'
-    + '<label class="field" for="upnote">Nota (opcional)<textarea id="upnote" placeholder="Ex.: a camisola é nova, comprei na Zara"></textarea></label>'
-    + '<button id="pick" class="btn primary"' + (S.busy || !assets ? ' disabled' : '') + '>' + (S.busy ? 'A enviar…' : 'Tirar ou escolher') + '</button>'
-    + (!assets ? '<p class="status">Não foi possível abrir o armazenamento de fotos.</p>' : '')
-    + (S.msg ? '<p class="status' + (S.msgErr ? ' err' : '') + '" role="status">' + esc(S.msg) + '</p>' : '')
-    + '</section>';
-  h += '<section class="stack" aria-labelledby="hist-h"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="hist-h">Diário de fotos</h2><span class="eyebrow">' + (S.uploads.length + (S.uploads.length === 1 ? ' foto' : ' fotos')) + '</span></div>';
-  if (pending) h += '<p class="note">Para criar uma peça a partir de uma foto usa <strong>Armário › + Nova peça</strong> e junta a foto.</p>';
-  if (!S.uploads.length) h += '<div class="empty">Ainda não enviaste nada.</div>';
-  else h += '<div class="uploads">' + S.uploads.slice(0, 20).map((u) => {
-    const thumb = '<button data-view="' + esc(u.asset) + '" data-view-kind="' + (u.kind === 'video' ? 'video' : 'img') + '" data-view-alt="Envio de ' + esc(u.date || '') + '" aria-label="Ver em grande" style="padding:0;border:none;background:none;flex:none">'
-      + (u.kind === 'video' ? '<video class="thumb" src="' + blob(u.asset) + '#t=0.5" muted playsinline preload="metadata"></video>' : '<img class="thumb" src="' + blob(u.asset) + '" alt="">') + '</button>';
-    const ok = u.status === 'tratada';
-    return '<div class="up">' + thumb + '<div class="meta"><strong style="font-size:14px">' + (u.type === 'peca' ? 'Peça esticada' : 'Vestido') + ' · ' + (u.kind === 'video' ? 'vídeo' : 'foto') + '</strong><small>' + esc(u.date ? fmtShort(u.date) : '') + (u.note ? ' · ' + esc(u.note) : '') + (u.result ? ' · ' + esc(u.result) : '') + '</small></div>' + (ok ? '<span class="badge ok">Tratado</span>' : '') + '</div>';
-  }).join('') + '</div>';
+  outs.forEach((plan, i) => { h += outfitCard(plan, i, outs.length); });
+  wxAuto(); const n = wxNow();
+  h += '<button class="bigbtn" data-prop-open>' + I('sparkles', 22) + (outs.length ? 'Propor outro fit' : 'Propor fits para hoje') + '<small>' + I(wxIcon(n), 15) + '</small><small style="margin-left:-6px">' + esc(wxShort(n)) + '</small></button>';
+  h += '<div class="btnrow">' + buildBtn() + (outs.length ? '<button class="btn" data-add-outfit>' + I('layers') + 'Juntar outfit</button>' : '') + '</div>';
+  // foto ou vídeo do dia e o diário, num bloco que abre e fecha
+  const open = !!S.upOpen;
+  h += '<section class="card tight" style="gap:12px' + (open ? ';padding-bottom:14px' : '') + '"><button class="disc" data-up-toggle aria-expanded="' + open + '">' + I('camera') + 'Foto do dia' + (S.uploads.length ? '<span class="eyebrow" style="margin-left:6px">' + S.uploads.length + '</span>' : '') + I('chev') + '</button>';
+  if (open) {
+    h += '<div class="seg" role="group" aria-label="Tipo de envio">'
+      + '<button id="kind-vestido" data-kind="vestido" aria-pressed="' + (S.upKind === 'vestido') + '">' + I('user', 16) + 'Vestido</button>'
+      + '<button id="kind-peca" data-kind="peca" aria-pressed="' + (S.upKind === 'peca') + '">' + I('shirt', 16) + 'Peça esticada</button></div>'
+      + '<p class="status" style="font-size:13px">' + (S.upKind === 'vestido' ? 'Ao espelho, corpo inteiro, casaco aberto. Vídeo de 5 a 8 s ou foto.' : 'Peça esticada de frente, fundo liso e claro, luz de janela.') + '</p>'
+      + '<label class="field" for="upnote">Nota (opcional)<textarea id="upnote" placeholder="Ex.: a camisola é nova"></textarea></label>'
+      + '<button id="pick" class="btn primary"' + (S.busy || !assets ? ' disabled' : '') + '>' + I('camera') + (S.busy ? 'A enviar…' : 'Tirar ou escolher') + '</button>'
+      + (!assets ? '<p class="status">Não foi possível abrir o armazenamento de fotos.</p>' : '')
+      + (S.msg ? '<p class="status' + (S.msgErr ? ' err' : '') + '" role="status">' + esc(S.msg) + '</p>' : '');
+    if (S.uploads.length) h += '<h3 style="margin-top:4px">Diário</h3><div class="uploads">' + S.uploads.slice(0, 20).map((u) => {
+      const thumb = '<button data-view="' + esc(u.asset) + '" data-view-kind="' + (u.kind === 'video' ? 'video' : 'img') + '" data-view-alt="Envio de ' + esc(u.date || '') + '" aria-label="Ver em grande" style="padding:0;border:none;background:none;flex:none">'
+        + (u.kind === 'video' ? '<video class="thumb" src="' + blob(u.asset) + '#t=0.5" muted playsinline preload="metadata"></video>' : '<img class="thumb" src="' + blob(u.asset) + '" alt="">') + '</button>';
+      return '<div class="up">' + thumb + '<div class="meta"><strong style="font-size:14px">' + (u.type === 'peca' ? 'Peça esticada' : 'Vestido') + ' · ' + (u.kind === 'video' ? 'vídeo' : 'foto') + '</strong><small>' + esc(u.date ? fmtShort(u.date) : '') + (u.note ? ' · ' + esc(u.note) : '') + (u.result ? ' · ' + esc(u.result) : '') + '</small></div>' + (u.status === 'tratada' ? '<span class="badge ok">' + I('check', 14) + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
   return h + '</section>';
 }
 
@@ -869,17 +954,20 @@ function sortPieces(list) {
 
 // ---------- outfits de hoje ----------
 function kindSeg(attr, id, cur, label) {
-  return '<div class="seg kseg" role="group" aria-label="' + esc(label || 'Tipo de outfit') + '">' + Object.keys(KINDS).map((k) => '<button data-' + attr + '="' + esc(id) + '" data-k="' + k + '" aria-pressed="' + (cur === k) + '">' + KINDS[k] + '</button>').join('') + '</div>';
+  return '<div class="seg kseg" role="group" aria-label="' + esc(label || 'Tipo de outfit') + '">' + Object.keys(KINDS).map((k) => '<button data-' + attr + '="' + esc(id) + '" data-k="' + k + '" aria-pressed="' + (cur === k) + '" aria-label="' + KINDS[k] + '">' + I(KIND_IC[k], 16) + '<span>' + KIND_SHORT[k] + '</span></button>').join('') + '</div>';
 }
 function outfitCard(plan, i, n) {
-  const f = dayFit(plan), id = plan.id, kind = kindOf(plan);
-  let h = '<section class="card" aria-label="' + esc(plan.title || 'Fit de hoje') + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div style="min-width:0"><p class="eyebrow">' + (n > 1 ? 'Outfit ' + (i + 1) + ' de ' + n : 'Fit de hoje') + (kind !== 'normal' ? ' · ' + KINDS[kind] : '') + '</p><h2>' + esc(plan.title || 'Fit de hoje') + '</h2></div>'
-    + '<span style="display:flex;gap:6px;flex:none"><button class="chip" data-edit-day="' + esc(id) + '">Editar</button><button class="chip" data-del-day="' + esc(id) + '" aria-label="Tirar este outfit de hoje" title="Tirar de hoje">✕</button></span></div>'
+  const f = dayFit(plan), id = plan.id, kind = kindOf(plan), ps = (plan.pieces || []).map(pieceById).filter(Boolean), opts = S.optOpen === id;
+  let h = '<section class="card outfit" aria-label="' + esc(plan.title || 'Fit de hoje') + '">'
+    + '<div class="sec"><h2>' + I(KIND_IC[kind], 20) + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(plan.title || 'Fit de hoje') + '</span></h2>'
+    + '<span class="acts"><button class="ibtn" data-edit-day="' + esc(id) + '" aria-label="Editar este outfit" title="Editar">' + I('edit') + '</button><button class="ibtn" data-del-day="' + esc(id) + '" aria-label="Tirar este outfit de hoje" title="Tirar de hoje">' + I('x') + '</button></span></div>'
+    + (n > 1 ? '<p class="meta-line" style="margin-top:-8px">Outfit ' + (i + 1) + ' de ' + n + '</p>' : '')
     + kindSeg('day-kind', id, kind);
-  if (S.confirmDay === id) h += '<div class="card" style="gap:10px;border-color:var(--new-ink)"><p style="margin:0">Tirar este outfit de hoje? O fit continua guardado nos teus fits.</p><div class="row"><button class="btn" data-del-day-cancel>Cancelar</button><button class="btn" data-del-day-ok="' + esc(id) + '" style="background:var(--new-ink);color:var(--surface);border-color:var(--new-ink)">Tirar</button></div></div>';
-  h += layerToggles('day', id, uids(plan), plan.closed, plan.opened)
-    + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 180 : 220, plan.closed, plan.opened) + '</div>' + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened)) + optSel('day', id, plan)
-    + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
+  if (S.confirmDay === id) h += '<div class="note" style="display:flex;flex-direction:column;gap:10px"><span>Tirar este outfit de hoje? O fit continua guardado.</span><div class="btnrow"><button class="btn" data-del-day-cancel>Cancelar</button><button class="btn" data-del-day-ok="' + esc(id) + '" style="background:var(--new-ink);color:#fff;border-color:var(--new-ink)">' + I('trash') + 'Tirar</button></div></div>';
+  h += '<div class="fitview" style="justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened) + miniCol(ps) + '</div>'
+    + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened))
+    + '<button class="disc" data-opt-toggle="' + esc(id) + '" aria-expanded="' + opts + '">' + I('layers') + 'Camadas e meias' + I('chev') + '</button>'
+    + (opts ? layerToggles('day', id, uids(plan), plan.closed, plan.opened) + optSel('day', id, plan) : '')
     + (f ? rateHtml(f) : '');
   return h + '</section>';
 }
@@ -892,12 +980,13 @@ function targetDay(kind) {
 }
 async function wearToday(data, kind) {
   const t = today(), k = KINDS[kind] ? kind : 'normal', tg = targetDay(k), before = outfitsOn(t).length;
-  S.adding = false;
+  S.adding = false; if (S.propOpen) { S.propOpen = false; const m = document.getElementById('main'); if (m) setTimeout(() => { m.scrollTop = 0; }, 0); }
   await db.doc('days/' + tg.id).set(Object.assign({ date: t, worn: true, closed: false, chosenAt: new Date().toISOString() }, data, { kind: k, slot: tg.slot }));
   if (!tg.replaced && before) toast('Juntei a hoje: agora tens ' + (before + 1) + ' outfits.');
   return tg.id;
 }
 
+function openPropose(adding) { S.adding = !!adding; S.propOpen = true; S.tab = 'hoje'; pref('tab', 'hoje'); render(); const m = document.getElementById('main'); if (m) m.scrollTop = 0; }
 const goTop = () => setTimeout(() => { const el = document.getElementById('top-h'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 40);
 // ---------- jogos do FC Porto (a função «jogos» no Supabase vai buscá-los e manda a notificação) ----------
 const gameVs = (g) => g.home ? 'FC Porto – ' + g.opponent : g.opponent + ' – FC Porto';
@@ -908,16 +997,16 @@ function gameHtml() {
   const g = nextGame(); if (!g) return '';
   const t = today(), d = diffDays(t, g.date); if (d > 6) return '';
   const today_ = d === 0, gid = esc(g.id), when = today_ ? 'Hoje' : d === 1 ? 'Amanhã' : fmtDay(g.date);
-  let h = '<section class="card game" aria-labelledby="game-h"><p class="eyebrow">Jogo do Porto · ' + esc(when + (g.time ? ' às ' + g.time : '')) + '</p><h2 id="game-h">' + esc(gameVs(g)) + '</h2>'
-    + '<p class="status" style="margin:0">' + esc([g.competition, g.venue].filter(Boolean).join(' · ')) + '</p>';
+  let h = '<section class="card game" aria-labelledby="game-h"><div class="gband"><span class="pill">' + I('ball', 15) + esc('Jogo do Porto · ' + when + (g.time ? ' · ' + g.time : '')) + '</span></div><div class="gin"><h2 id="game-h">' + esc(gameVs(g)) + '</h2>'
+    + ((g.competition || g.venue) ? '<p class="meta-line">' + I('pin', 15) + esc([g.competition, g.venue].filter(Boolean).join(' · ')) + '</p>' : '');
   if (g.going === true) {
     const has = today_ && outfitsOn(t).some((o) => kindOf(o) === 'jogo');
-    h += '<p style="margin:0">Vais ao jogo. ' + (has ? 'O fit do jogo já está escolhido ✓' : today_ ? 'Escolhe o fit: as propostas abaixo usam a tua roupa do Porto.' : 'No dia aviso-te e proponho o fit.') + '</p>'
-      + '<div class="row">' + (today_ && !has ? '<button class="btn primary" data-game-fit>Ver fits para o jogo</button>' : '') + '<button class="btn" data-game-go="' + gid + '" data-v="">Mudar a resposta</button></div>';
-  } else if (g.going === false) h += '<p style="margin:0">Não vais a este' + (today_ ? '.' : ': não te aviso no dia.') + '</p><button class="btn" data-game-go="' + gid + '" data-v="">Mudar a resposta</button>';
-  else h += '<p style="margin:0">Vais?</p><div class="row"><button class="btn" data-game-go="' + gid + '" data-v="0">Não vou</button><button class="btn primary" data-game-go="' + gid + '" data-v="1">Vou</button></div>';
+    h += '<p class="meta-line" style="color:#1F7A55;font-weight:600">' + I('check', 16) + (has ? 'Vais · fit escolhido' : today_ ? 'Vais · falta o fit' : 'Vais · aviso-te no dia') + '</p>'
+      + '<div class="btnrow">' + (today_ && !has ? '<button class="btn primary" data-game-fit>' + I('sparkles') + 'Fits para o jogo</button>' : '') + '<button class="btn" data-game-go="' + gid + '" data-v="" aria-label="Mudar a resposta">' + I('refresh') + (today_ && !has ? '' : 'Mudar') + '</button></div>';
+  } else if (g.going === false) h += '<p class="meta-line">' + I('x', 16) + 'Não vais a este</p><button class="btn" data-game-go="' + gid + '" data-v="">' + I('refresh') + 'Mudar</button>';
+  else h += '<div class="btnrow"><button class="btn" data-game-go="' + gid + '" data-v="0">' + I('x') + 'Não vou</button><button class="btn primary" data-game-go="' + gid + '" data-v="1">' + I('check') + 'Vou</button></div>';
   if (g.going !== false) h += pushNudge();
-  return h + '</section>';
+  return h + '</div></section>';
 }
 
 // ---------- notificações (Web Push; no iPhone só com a app no ecrã principal) ----------
@@ -932,7 +1021,7 @@ function pushNudge() {
   if (st === 'on' || st === 'unsupported') return '';
   if (st === 'ios-browser') return '<p class="note" style="font-size:13px;margin:0">Para te avisar no dia do jogo, abre a app a partir do ícone no ecrã principal e ativa lá as notificações.</p>';
   if (st === 'denied') return '<p class="note" style="font-size:13px;margin:0">As notificações estão bloqueadas para esta app. Ativa-as nas definições do telemóvel para te avisar no dia do jogo.</p>';
-  return '<button class="btn" data-push-on' + (S.pushBusy ? ' disabled' : '') + '><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>' + (S.pushBusy ? 'A ativar…' : 'Avisar-me nos dias de jogo') + '</button>';
+  return '<button class="btn" data-push-on' + (S.pushBusy ? ' disabled' : '') + '>' + I('bell') + (S.pushBusy ? 'A ativar…' : 'Avisar-me nos dias de jogo') + '</button>';
 }
 const b64u = (s) => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
 const strHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
@@ -962,14 +1051,15 @@ function viewCloset() {
   const present = SUBS.filter((s) => S.pieces.some((p) => subOf(p) === s.id));
   const tagF = S.filter === 'tag:fcp' ? isPorto : S.filter === 'tag:treino' ? isTreino : null;
   const shown = tagF ? present.filter((c) => S.pieces.some((p) => subOf(p) === c.id && tagF(p))) : present.filter((c) => S.filter === 'all' || c.id === S.filter);
-  let h = '<div class="head"><p class="eyebrow">' + S.pieces.length + ' peças</p><h1>O meu armário</h1></div>';
+  let h = '<div class="top"><div class="head"><p class="eyebrow">' + S.pieces.length + ' peças</p><h1>Armário</h1></div><button class="ibtn" data-new-piece aria-label="Nova peça" title="Nova peça">' + I('plus', 20) + '</button></div>';
   h += '<div class="chips" role="group" aria-label="Filtrar"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Tudo</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('')
-    + (S.pieces.some(isPorto) ? '<button class="chip" data-filter="tag:fcp" aria-pressed="' + (S.filter === 'tag:fcp') + '">FC Porto</button>' : '') + (S.pieces.some(isTreino) ? '<button class="chip" data-filter="tag:treino" aria-pressed="' + (S.filter === 'tag:treino') + '">Treino</button>' : '') + '</div>';
-  h += '<div class="toolbar"><label for="sort">Ordenar em cada categoria<select id="sort">' + SORTS.map((s) => '<option value="' + s.id + '"' + (S.sort === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></label><button class="chip" data-new-piece>+ Nova peça</button></div>';
+    + (S.pieces.some(isPorto) ? '<button class="chip" data-filter="tag:fcp" aria-pressed="' + (S.filter === 'tag:fcp') + '">' + I('ball', 15) + 'FC Porto</button>' : '') + (S.pieces.some(isTreino) ? '<button class="chip" data-filter="tag:treino" aria-pressed="' + (S.filter === 'tag:treino') + '">' + I('dumbbell', 15) + 'Treino</button>' : '') + '</div>';
+  h += '<div class="toolbar"><label for="sort">' + I('sliders', 16) + '<select id="sort" aria-label="Ordenar em cada categoria">' + SORTS.map((s) => '<option value="' + s.id + '"' + (S.sort === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></label></div>';
   if (!shown.length) return h + '<div class="empty">' + (S.pieces.length ? 'Nada nesta categoria ainda.' : 'O armário está vazio. Envia a primeira foto no separador Hoje.') + '</div>';
   h += shown.map((c) => {
     const list = sortPieces(S.pieces.filter((p) => subOf(p) === c.id && (!tagF || tagF(p))));
-    return '<section class="stack" aria-labelledby="cat-' + c.id + '"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="cat-' + c.id + '">' + c.label + '</h2><span class="eyebrow">' + list.length + '</span></div><div class="grid">' + list.map(tileHtml).join('') + '</div></section>';
+    const body = '<section class="stack" aria-labelledby="cat-' + c.id + '"><div class="sec"><h2 id="cat-' + c.id + '">' + c.label + '</h2><span class="eyebrow">' + list.length + '</span></div><div class="grid">' + list.map(tileHtml).join('') + '</div></section>';
+    return body;
   }).join('');
   return h;
 }
@@ -1174,8 +1264,8 @@ function wxHtml() {
   if (n.src === 'live') line = '<strong>' + r(w.tmin) + '–' + r(w.tmax) + ' °C</strong> · ' + wxDesc(w.code) + ' · sensação ' + r(n.feel) + ' °C' + (w.pp >= 30 || w.psum >= 1 ? ' · chuva ' + r(w.pp) + ' %' : '') + (w.wind >= 30 ? ' · vento ' + r(w.wind) + ' km/h' : '');
   else if (n.src === 'manual') line = 'Dia <strong>' + n.manual + '</strong> (escolhido por ti, ≈ ' + n.feel + ' °C)';
   else line = 'Sem previsão: a contar com <strong>≈ ' + n.feel + ' °C</strong>, o normal para esta altura do ano.';
-  let h = '<div class="wx"><p>' + line + '</p><div class="chips" role="group" aria-label="Tempo">'
-    + '<button class="chip" data-wx-locate' + (WX.busy ? ' disabled' : '') + ' aria-pressed="' + (n.src === 'live') + '">' + (WX.busy ? 'A ver o tempo…' : wxLoc() ? 'Previsão local' : 'Usar a minha localização') + '</button>'
+  let h = '<div class="wx"><p style="display:flex;gap:8px;align-items:flex-start">' + I(wxIcon(n), 20) + '<span>' + line + '</span></p><div class="chips" role="group" aria-label="Tempo">'
+    + '<button class="chip" data-wx-locate' + (WX.busy ? ' disabled' : '') + ' aria-pressed="' + (n.src === 'live') + '">' + I('pin', 15) + (WX.busy ? 'A ver o tempo…' : wxLoc() ? 'Previsão local' : 'Usar a minha localização') + '</button>'
     + Object.keys(MANUAL).map((k) => '<button class="chip" data-wx-manual="' + k + '" aria-pressed="' + (n.manual === k) + '">' + k[0].toUpperCase() + k.slice(1) + '</button>').join('') + '</div>';
   if (WX.err) h += '<p class="status err" role="status">' + esc(WX.err) + '</p>';
   return h + '</div>';
@@ -1386,32 +1476,43 @@ function proposals() {
 }
 function propCard(x, i) {
   const ps = x.ids.map(pieceById).filter(Boolean);
-  return '<article class="card" aria-label="' + esc(x.label) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + esc(x.known.title || 'Já nos teus fits') + '</span>' : '') + '</div>'
-    + '<div class="fitview">' + dressedHtml(x.ids, 150, false, []) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
+  return '<article class="card" aria-label="' + esc(x.label) + '"><div class="sec"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + (x.known.status === 'gosto' ? I('heart', 13) : '') + esc(x.known.title || 'Já nos teus fits') + '</span>' : '') + '</div>'
+    + '<div class="fitview">' + dressedHtml(x.ids, 150, false, []) + miniCol(ps) + '</div>'
     + styleHtml('p:' + x.key, x.style)
     + '<div class="tags">' + x.notes.map((n) => '<span>' + esc(n) + '</span>').join('') + '</div>'
-    + '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-prop-skip="' + i + '" aria-label="Outra proposta em vez desta" title="Outra proposta" style="flex:none;width:50px;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>'
-    + '<button class="btn" data-prop-edit="' + i + '" style="flex:none;padding:0 14px">Ajustar</button>'
-    + '<button class="btn primary" data-prop-use="' + i + '" style="flex:1">Vou usar hoje</button></div></article>';
+    + '<div class="btnrow"><button class="ibtn" data-prop-skip="' + i + '" aria-label="Outra proposta em vez desta" title="Outra proposta">' + I('refresh') + '</button>'
+    + '<button class="ibtn" data-prop-edit="' + i + '" aria-label="Ajustar no construtor" title="Ajustar">' + I('edit') + '</button>'
+    + '<button class="btn primary" data-prop-use="' + i + '" style="flex:1">' + I('check') + 'Usar hoje</button></div></article>';
 }
-function topHtml() {
+// ecrã das propostas (abre a partir de Hoje): tipo, tempo, afinar, top 3
+function viewPropose() {
   wxAuto();
-  const R = proposals();
-  const focus = focusPieces(), fo = focus.length, pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
-  const kindT = S.kind === 'treino' ? ' para treinar' : S.kind === 'jogo' ? ' para o jogo' : ' para hoje';
-  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Top 3' + kindT) + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>'
+  const R = proposals(), focus = focusPieces(), fo = focus.length, mi = minStyle();
+  const pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
+  let h = '<button class="backbtn" data-prop-close>' + I('back') + 'Hoje</button>'
+    + '<div class="head"><p class="eyebrow">' + (S.adding ? 'Mais um outfit para hoje' : esc(fmtDay(today()))) + '</p><h1 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Propostas') + '</h1></div>'
     + kindSeg('kind-pick', 'p', S.kind, 'Propor fits para') + wxHtml();
-  if (S.kind === 'jogo' && !S.pieces.some(isPorto)) h += '<p class="note" style="font-size:13px;margin:0">Ainda não marcaste roupa do Porto: proponho azul e branco com o que tens. Abre uma peça no armário e toca em «FC Porto».</p>';
-  if (S.kind === 'jogo' && S.pieces.some(isPorto)) h += '<p class="status" style="font-size:13px;margin:0">A roupa do Porto entra sempre; o que não tiveres do Porto vem do armário normal.</p>';
-  if (pick.length) {
-    h += '<div class="chips"><button class="chip" data-with-pick aria-pressed="' + !!(fo || S.pickPiece) + '" aria-expanded="' + !!(fo || S.pickPiece) + '">Propor com peças à escolha</button>' + (fo ? '<button class="chip" data-with-clear>✕ Todas as peças</button>' : '') + '</div>';
-    if (fo || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
-      + '<p class="status" style="font-size:13px">' + (fo ? 'Podes juntar mais peças (ex.: calças + calçado) ou tocar numa escolhida para a tirar. A app propõe o resto.' : 'Toca numa ou mais peças (ex.: calças + calçado) e a app propõe o resto.') + '</p>';
+  const fOpen = !!(S.filtOpen || fo || S.pickPiece);
+  h += '<section class="card tight" style="gap:10px"><button class="disc" data-filt-toggle aria-expanded="' + fOpen + '">' + I('sliders') + 'Afinar' + ((fo || mi) ? '<span class="eyebrow" style="margin-left:4px">' + [fo && (fo === 1 ? '1 peça' : fo + ' peças'), mi && 'índice ≥ ' + mi].filter(Boolean).join(' · ') + '</span>' : '') + I('chev') + '</button>';
+  if (fOpen) {
+    h = h.replace(/<section class="card tight" style="gap:10px">(?![\s\S]*<section class="card tight")/, '<section class="card tight" style="gap:10px;padding-bottom:14px">');
+    if (pick.length) h += '<p class="status" style="font-size:13px">' + (fo ? 'Toca noutra peça para a juntar, ou numa escolhida para a tirar.' : 'Escolhe peças que queres usar (ex.: calças + calçado); a app propõe o resto.') + '</p>'
+      + '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
+      + (fo ? '<button class="chip" data-with-clear style="align-self:flex-start">' + I('x', 14) + 'Tirar as peças escolhidas</button>' : '');
+    h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
   }
-  const mi = minStyle();
-  h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
-  h += R.empty === 'treino' ? '<div class="empty">Ainda não tens roupa de treino. Abre as peças que usas para treinar e toca em «Só para treino»: passam a aparecer só aqui.</div>' : R.list.length ? R.list.map(propCard).join('') : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo para veres propostas.</div>' : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
-  return h + buildBtn() + '</section>';
+  h += '</section>';
+  let list = R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e toca em «Só para treino».</div>'
+    : R.list.length ? R.list.map(propCard).join('')
+    : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo em «Afinar».</div>'
+    : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou um calçado, ou já saltaste todas hoje.</div>'
+    : '<div class="empty">Para propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado.</div>';
+  if (S.kind === 'jogo') {
+    const nP = S.pieces.filter(isPorto).length;
+    list = '<div class="fcpz"><span class="pill">' + I('ball', 15) + (nP ? 'Dia de jogo · roupa do Porto sempre' : 'Dia de jogo · azul e branco') + '</span>'
+      + (nP ? '' : '<span class="pill" style="font-weight:500">Marca a tua roupa do Porto: Armário › peça › «FC Porto»</span>') + list + '</div>';
+  }
+  return h + '<section class="stack" aria-label="Propostas">' + list + '</section>' + buildBtn();
 }
 async function useProposal(x) {
   if (!x || !db) return;
@@ -1442,27 +1543,27 @@ function applyRating(id, r) {
 function fitCard(f, compact) {
   const ps = (f.pieces || []).map(pieceById).filter(Boolean);
   const usedToday = outfitsOn(today()).some((d) => dayFit(d) === f);
-  const saved = f.status === 'gosto';
-  let h = '<article class="card" aria-label="' + esc(f.title) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2>' + esc(f.title) + '</h2>'
-    + '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' + (kindOf(f) !== 'normal' ? '<span class="badge kb-' + kindOf(f) + '">' + KINDS[kindOf(f)] + '</span>' : '') + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : f.source === 'app' ? '<span class="badge">Proposta do dia</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</span></div>';
+  const saved = f.status === 'gosto', k = kindOf(f), fid = esc(f.id);
+  let h = '<article class="card" aria-label="' + esc(f.title) + '"><div class="sec"><h2>' + (k !== 'normal' ? I(KIND_IC[k], 18) : '') + '<span style="min-width:0">' + esc(f.title) + '</span></h2>'
+    + (f.source === 'eu' ? '<span class="badge" title="Criado por mim">' + I('edit', 13) + '</span>' : '') + '</div>';
   h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
-  h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 190, f.closed, f.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
+  h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened) + miniCol(ps) + '</div>';
   if (!compact) {
-    h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened)) + optSel('fit', f.id, f);
+    h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened));
     const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
     if (tags.length) h += '<div class="tags">' + tags.map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>';
-    if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px">' + esc(f.reason) + '</p>';
+    if (f.reason) h += '<p style="margin:0;color:var(--muted);font-size:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(f.reason) + '</p>';
     const used = fitDays(f).map((d) => d.date).sort();
-    if (used.length) h += '<p class="status" style="font-size:13px">Usado ' + used.length + '×' + ' · último a ' + esc(fmtShort(used[used.length - 1])) + '</p>';
+    h += '<p class="meta-line">' + I('history', 15) + (used.length ? 'Usado ' + used.length + '× · último a ' + esc(fmtShort(used[used.length - 1])) : 'Ainda por usar') + '</p>';
     h += rateHtml(f);
   }
-  h += '<div class="row" style="flex-wrap:nowrap">'
-    + '<button class="btn" data-fit-no="' + esc(f.id) + '" aria-label="Não gosto deste fit" style="flex:none;width:50px;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'
-    + '<button class="btn" data-fit-like="' + esc(f.id) + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Tirar dos guardados' : 'Guardar este fit') + '" style="flex:none;width:50px;padding:0;color:' + (saved ? 'var(--new-ink)' : 'inherit') + '"><svg width="20" height="20" viewBox="0 0 24 24" fill="' + (saved ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg></button>'
-    + (usedToday ? '<span class="btn" style="flex:1;background:var(--accent-soft);color:var(--accent-soft-ink);border-color:transparent">Escolhido para hoje</span>'
-      : '<button class="btn primary" data-fit-use="' + esc(f.id) + '" style="flex:1">Vou usar hoje</button>')
+  h += '<div class="btnrow">'
+    + '<button class="ibtn" data-fit-no="' + fid + '" aria-label="Não gosto deste fit" title="Não gosto">' + I('x') + '</button>'
+    + '<button class="ibtn" data-fit-like="' + fid + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Tirar dos guardados' : 'Guardar este fit') + '" title="Guardar">' + I('heart') + '</button>'
+    + (compact ? '' : '<button class="ibtn" data-fit-edit="' + fid + '" aria-label="Editar" title="Editar">' + I('edit') + '</button><button class="ibtn" data-fit-base="' + fid + '" aria-label="Criar outro a partir deste" title="Criar outro a partir deste">' + I('copy') + '</button>')
+    + (usedToday ? '<span class="btn" style="flex:1;background:var(--sunk);border-color:transparent;color:var(--muted)">' + I('check') + 'Hoje</span>'
+      : '<button class="btn primary" data-fit-use="' + fid + '" style="flex:1">' + I('check') + 'Usar hoje</button>')
     + '</div>';
-  if (!compact) h += '<div class="row" style="flex-wrap:nowrap"><button class="btn" data-fit-edit="' + esc(f.id) + '" style="min-height:40px;font-size:14px;flex:1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>Editar</button><button class="btn" data-fit-base="' + esc(f.id) + '" style="min-height:40px;font-size:14px;flex:1.4"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Criar outro a partir deste</button></div>';
   return h + '</article>';
 }
 
@@ -1472,36 +1573,45 @@ function activeFits() {
 }
 
 function dayCard(d) {
-  const ps = (d.pieces || []).map(pieceById).filter(Boolean);
-  const f = dayFit(d);
-  return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + (kindOf(d) !== 'normal' ? ' <span class="badge kb-' + kindOf(d) + '">' + KINDS[kindOf(d)] + '</span>' : '') + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
-    + (kindOf(d) === 'jogo' ? (() => { const g = S.games.find((x) => x.date === d.date); return g ? '<p class="status" style="margin:0;font-size:13px">' + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : ''; })() : '')
-    + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
+  const ps = (d.pieces || []).map(pieceById).filter(Boolean), f = dayFit(d), k = kindOf(d);
+  const g = k === 'jogo' ? S.games.find((x) => x.date === d.date) : null;
+  return '<div class="card"><div class="sec"><h3>' + I(KIND_IC[k], 17) + esc(fmtDay(d.date)) + '</h3><span class="eyebrow" style="max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.title || '') + '</span></div>'
+    + (g ? '<p class="meta-line">' + I('ball', 15) + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : '')
+    + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + miniCol(ps) + '</div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
 
 function viewFits() {
-  const list = activeFits().filter((f) => S.fitFilter === 'all' || (S.fitFilter === 'gosto' ? f.status === 'gosto' : KINDS[S.fitFilter] ? kindOf(f) === S.fitFilter : f.source === 'eu'));
+  const hist = S.fitsView === 'hist';
+  let h = '<div class="top"><div class="head"><p class="eyebrow">' + activeFits().length + ' fits</p><h1>Fits</h1></div><button class="ibtn" data-build aria-label="Criar o meu fit" title="Criar o meu fit">' + I('plus', 20) + '</button></div>'
+    + '<button class="bigbtn" data-prop-open>' + I('sparkles', 22) + 'Propor fits para hoje</button>'
+    + '<div class="seg" role="group" aria-label="Ver"><button data-fitsview="fits" aria-pressed="' + !hist + '">' + I('star', 16) + 'Os meus fits</button><button data-fitsview="hist" aria-pressed="' + hist + '">' + I('history', 16) + 'Histórico</button></div>';
+  if (!hist) {
+    const ff = S.fitFilter;
+    const list = activeFits().filter((f) => ff === 'all' || (ff === 'gosto' ? f.status === 'gosto' : KINDS[ff] ? kindOf(f) === ff : f.source === 'eu'));
+    h += '<div class="chips" role="group" aria-label="Mostrar">'
+      + [['all', 'Todos', ''], ['gosto', 'Guardados', 'heart'], ['eu', 'Meus', 'edit'], ['treino', 'Treino', 'dumbbell'], ['jogo', 'Jogo', 'ball']].map(([k, l, ic]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (ff === k) + '">' + (ic ? I(ic, 15) : '') + l + '</button>').join('') + '</div>';
+    let body = list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (ff === 'all' ? 'Sem fits. Cria os teus com ＋ ou pede propostas.' : 'Nada aqui ainda.') + '</div>';
+    if (ff === 'jogo') body = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Fits de jogo</span>' + body + '</div>';
+    return h + '<section class="stack" aria-label="Fits">' + body + '</section>';
+  }
+  // histórico: todos os outfits usados, com filtro por tipo (normal, treino, jogo)
   const allPast = worn().sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1));
   const hk = KINDS[S.histKind] ? S.histKind : 'all', past = allPast.filter((d) => hk === 'all' || kindOf(d) === hk), shownN = S.histN || 14;
-  let h = '<div class="head"><p class="eyebrow">Propostas com o que tens no armário</p><h1>Fits</h1></div>' + topHtml();
-  h += '<div class="chips" role="group" aria-label="Mostrar">'
-    + [['all', 'Todos'], ['gosto', 'Guardados'], ['eu', 'Criados por mim'], ['treino', 'Treino'], ['jogo', 'Dia de jogo']].map(([k, l]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (S.fitFilter === k) + '">' + l + '</button>').join('') + '</div>';
-  h += '<section class="stack" aria-label="Propostas">';
-  h += list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (S.fitFilter === 'all' ? 'Sem propostas. Cria os teus com «Criar o meu fit».' : 'Nada aqui ainda.') + '</div>';
-  // histórico: todos os outfits usados, com filtro por tipo (normal, treino, jogo)
   const cnt = (k) => allPast.filter((d) => k === 'all' || kindOf(d) === k).length;
-  h += '</section><section class="stack" aria-labelledby="past-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="past-h">O que usaste</h2><span class="eyebrow">' + past.length + (past.length === 1 ? ' outfit' : ' outfits') + (past.length ? ' · ' + nDates(past) + (nDates(past) === 1 ? ' dia' : ' dias') : '') + '</span></div>'
-    + '<div class="chips" role="group" aria-label="Histórico por tipo">' + [['all', 'Todos']].concat(Object.entries(KINDS)).map(([k, l]) => '<button class="chip" data-histkind="' + k + '" aria-pressed="' + (hk === k) + '">' + l + ' · ' + cnt(k) + '</button>').join('') + '</div>';
-  h += past.length ? past.slice(0, shownN).map(dayCard).join('') : '<div class="empty">' + (hk === 'all' ? 'Nada registado ainda.' : 'Ainda não tens outfits ' + (hk === 'treino' ? 'de treino' : hk === 'jogo' ? 'de dia de jogo' : 'normais') + ' registados.') + '</div>';
-  if (past.length > shownN) h += '<button class="btn" data-hist-more>Mostrar mais (' + (past.length - shownN) + ')</button>';
-  return h + '</section>';
+  h += '<div class="chips" role="group" aria-label="Histórico por tipo">' + [['all', 'Todos']].concat(Object.keys(KINDS).map((k) => [k, KIND_SHORT[k]])).map(([k, l]) => '<button class="chip" data-histkind="' + k + '" aria-pressed="' + (hk === k) + '">' + (KIND_IC[k] ? I(KIND_IC[k], 15) : '') + l + ' <span style="opacity:.6">' + cnt(k) + '</span></button>').join('') + '</div>'
+    + '<p class="meta-line" id="past-h">' + I('calendar', 15) + past.length + (past.length === 1 ? ' outfit' : ' outfits') + (past.length ? ' · ' + nDates(past) + (nDates(past) === 1 ? ' dia' : ' dias') : '') + '</p>';
+  let body = past.length ? past.slice(0, shownN).map(dayCard).join('') : '<div class="empty">' + (hk === 'all' ? 'Nada registado ainda.' : 'Ainda não tens outfits ' + (hk === 'treino' ? 'de treino' : hk === 'jogo' ? 'de dia de jogo' : 'normais') + ' registados.') + '</div>';
+  if (hk === 'jogo') body = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Dias de jogo</span>' + body + '</div>';
+  h += '<section class="stack" aria-label="Histórico">' + body + '</section>';
+  if (past.length > shownN) h += '<button class="btn" data-hist-more>' + I('chev') + 'Mostrar mais (' + (past.length - shownN) + ')</button>';
+  return h;
 }
 
 // ---------- stats ----------
 function viewStats() { // com filtro por tipo de outfit (normal, treino, dia de jogo)
   S.wornKind = KINDS[S.statKind] ? S.statKind : null;
-  try { return viewStatsInner(); } finally { S.wornKind = null; }
+  try { const h = viewStatsInner(); return S.wornKind === 'jogo' ? h.replace('<!--fcpz-->', '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Dias de jogo</span>') + '</div>' : h; } finally { S.wornKind = null; }
 }
 function viewStatsInner() {
   const t = today(), since = periodStart(), sk = S.wornKind;
@@ -1510,9 +1620,10 @@ function viewStatsInner() {
   const P = sk === 'treino' ? (S.pieces.some(isTreino) ? S.pieces.filter(isTreino) : S.pieces) : sk ? S.pieces.filter((p) => !isTreino(p)) : S.pieces;
   const kLabel = sk === 'treino' ? 'de treino' : sk === 'jogo' ? 'de jogo' : sk ? 'normais' : '';
   let h = '<div class="head"><p class="eyebrow">Para usares a roupa toda</p><h1>Estatísticas</h1></div>';
-  h += '<div class="chips" role="group" aria-label="Período">' + PERIODS.map((p) => '<button class="chip" data-period="' + p.id + '" aria-pressed="' + (S.period === p.id) + '">' + p.label + '</button>').join('') + '</div>';
-  h += '<div class="chips" role="group" aria-label="Tipo de outfit">' + [['all', 'Todos'], ['normal', 'Normal'], ['treino', 'Treino'], ['jogo', 'Jogo']].map(([k, l]) => '<button class="chip" data-statkind="' + k + '" aria-pressed="' + ((sk || 'all') === k) + '">' + l + '</button>').join('') + '</div>';
-  if (sk) h += '<p class="status" style="font-size:13px;margin:0">Só os outfits ' + kLabel + (sk === 'treino' && S.pieces.some(isTreino) ? ', com a tua roupa de treino' : sk ? ', sem a roupa de treino' : '') + '.</p>';
+  h += '<div class="chips" role="group" aria-label="Período">' + I('calendar', 18).replace('class="i"', 'class="i" style="align-self:center;color:var(--muted)"') + PERIODS.map((p) => '<button class="chip" data-period="' + p.id + '" aria-pressed="' + (S.period === p.id) + '">' + p.label + '</button>').join('') + '</div>';
+  h += '<div class="seg kseg" role="group" aria-label="Tipo de outfit">' + [['all', 'Todos']].concat(Object.keys(KINDS).map((k) => [k, KIND_SHORT[k]])).map(([k, l]) => '<button data-statkind="' + k + '" aria-pressed="' + ((sk || 'all') === k) + '">' + (KIND_IC[k] ? I(KIND_IC[k], 16) : '') + '<span>' + l + '</span></button>').join('') + '</div>';
+  if (sk) h += '<p class="meta-line">' + I('tag', 15) + 'Só os outfits ' + kLabel + (sk === 'treino' && S.pieces.some(isTreino) ? ', com a tua roupa de treino' : ', sem a roupa de treino') + '</p>';
+  h += '<!--fcpz-->';
   if (!worn().length) return h + '<div class="empty">' + (sk ? 'Ainda não tens outfits ' + kLabel + ' registados.' : 'Ainda não há dias registados. Escolhe o fit de hoje ou envia a foto do dia.') + '</div>';
 
   const counts = P.map((p) => ({ p, n: wearsOf(p.id, since).length, s: sinceLast(p) }));
@@ -1675,8 +1786,8 @@ function builderHtml() {
   h += '<label class="field" for="bname">Nome (opcional)<input id="bname" type="text" value="' + esc(B.title) + '" placeholder="Ex.: Jantar de sexta" style="min-height:44px"></label>';
   h += '<p class="status" role="status">' + (st.ok ? 'Fit completo: ' + B.sel.length + ' peças.' : 'Falta: ' + [!st.top && 'parte de cima', !st.bottom && 'calças ou calções', !st.shoe && 'calçado'].filter(Boolean).join(', ') + '.') + '</p>';
   h += B.editDay || B.editFit
-    ? '<div class="row"><button class="btn" data-close>Cancelar</button><button class="btn primary" data-bsave="' + (B.editFit ? 'fit' : 'edit') + '"' + (st.ok ? '' : ' disabled') + '>Guardar alterações</button></div>'
-    : '<div class="row"><button class="btn" data-bsave="guardar"' + (st.ok ? '' : ' disabled') + '>Guardar</button><button class="btn primary" data-bsave="hoje"' + (st.ok ? '' : ' disabled') + '>Vou usar hoje</button></div>';
+    ? '<div class="btnrow"><button class="btn" data-close>Cancelar</button><button class="btn primary" data-bsave="' + (B.editFit ? 'fit' : 'edit') + '"' + (st.ok ? '' : ' disabled') + '>' + I('check') + 'Guardar</button></div>'
+    : '<div class="btnrow"><button class="btn" data-bsave="guardar"' + (st.ok ? '' : ' disabled') + '>' + I('heart') + 'Guardar</button><button class="btn primary" data-bsave="hoje"' + (st.ok ? '' : ' disabled') + '>' + I('check') + 'Usar hoje</button></div>';
   return h + '</section></div>';
 }
 
@@ -3170,12 +3281,12 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.with) {
     if (t.dataset.withGo) S.withPieces = [t.dataset.with]; else toggleWith(t.dataset.with);
     S.pickPiece = !S.withPieces.length;
-    if (t.dataset.withGo) { S.open = null; S.confirmDel = false; if (S.tab !== 'fits') { S.tab = 'fits'; pref('tab', S.tab); } render(); document.getElementById('main').scrollTop = 0; } else render();
+    if (t.dataset.withGo) { S.open = null; S.confirmDel = false; renderSheet(); openPropose(false); } else render();
     return;
   }
   if (t.hasAttribute('data-with-clear')) { S.withPieces = []; S.pickPiece = false; render(); return; }
   if (t.hasAttribute('data-with-pick')) { if (focusPieces().length) { S.withPieces = []; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
-  if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
+  if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; S.propOpen = false; S.adding = false; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
   if (t.dataset.statkind) { S.statKind = t.dataset.statkind; render(); return; }
   if (t.dataset.period !== undefined) { S.period = Number(t.dataset.period); pref('period', S.period); render(); return; }
@@ -3223,7 +3334,12 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.kindPick) { S.kind = t.dataset.k; render(); return; }
   if (t.dataset.bkind) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; S.builder.kind = t.dataset.k; renderSheet(); return; }
   if (t.dataset.dayKind) { const d = dayById(t.dataset.dayKind); if (!d || !db) return; d.kind = t.dataset.k; render(); db.doc('days/' + d.id).update({ kind: t.dataset.k }).catch(() => {}); return; }
-  if (t.hasAttribute('data-add-outfit')) { S.adding = !S.adding; render(); if (S.adding) goTop(); return; }
+  if (t.hasAttribute('data-add-outfit')) { openPropose(true); return; }
+  if (t.hasAttribute('data-prop-open')) { openPropose(false); return; }
+  if (t.hasAttribute('data-prop-close')) { S.propOpen = false; S.adding = false; render(); document.getElementById('main').scrollTop = 0; return; }
+  if (t.hasAttribute('data-up-toggle')) { S.upOpen = !S.upOpen; render(); return; }
+  if (t.hasAttribute('data-filt-toggle')) { S.filtOpen = !(S.filtOpen || focusPieces().length || S.pickPiece); if (!S.filtOpen) { S.pickPiece = false; } render(); return; }
+  if (t.dataset.optToggle) { S.optOpen = S.optOpen === t.dataset.optToggle ? null : t.dataset.optToggle; render(); return; }
   if (t.dataset.delDay) { S.confirmDay = S.confirmDay === t.dataset.delDay ? null : t.dataset.delDay; render(); return; }
   if (t.hasAttribute('data-del-day-cancel')) { S.confirmDay = null; render(); return; }
   if (t.dataset.delDayOk) { const id = t.dataset.delDayOk; S.confirmDay = null; if (db) db.doc('days/' + id).delete().then(() => toast('Tirei esse outfit de hoje.')).catch(() => {}); return; }
@@ -3231,11 +3347,11 @@ document.addEventListener('click', (ev) => {
     const g = S.games.find((x) => x.id === t.dataset.gameGo); if (!g || !db) return;
     const going = t.dataset.v === '1' ? true : t.dataset.v === '0' ? false : null;
     g.going = going; if (going && g.date === today()) S.kind = 'jogo';
-    render(); db.doc('games/' + g.id).update({ going, answeredAt: new Date().toISOString() }).catch(() => {});
-    if (going && g.date === today() && !outfitsOn(today()).some((o) => kindOf(o) === 'jogo')) goTop();
+    db.doc('games/' + g.id).update({ going, answeredAt: new Date().toISOString() }).catch(() => {});
+    if (going && g.date === today() && !outfitsOn(today()).some((o) => kindOf(o) === 'jogo')) openPropose(false); else render();
     return;
   }
-  if (t.hasAttribute('data-game-fit')) { S.kind = 'jogo'; render(); goTop(); return; }
+  if (t.hasAttribute('data-game-fit')) { S.kind = 'jogo'; openPropose(false); return; }
   if (t.hasAttribute('data-push-on')) { enablePush(); return; }
   if (t.dataset.ptag) {
     const p = pieceById(S.open); if (!p || p.virtual || !db) return;
@@ -3245,6 +3361,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (t.dataset.fitfilter) { S.fitFilter = t.dataset.fitfilter; render(); return; }
+  if (t.dataset.fitsview) { S.fitsView = t.dataset.fitsview; render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.histkind) { S.histKind = t.dataset.histkind; S.histN = 14; render(); return; }
   if (t.hasAttribute('data-hist-more')) { S.histN = (S.histN || 14) + 20; render(); return; }
   if (t.dataset.fitUse) { useFit(t.dataset.fitUse); return; }
@@ -3280,7 +3397,7 @@ async function boot() {
   catch (e) { S.ready = true; S.offline = true; render(); return; }
   Cloud.on(Login.render); Cloud.start(); Login.render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done && !S.designer && !S.builder) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}); }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.jogo) { S.tab = 'hoje'; S.kind = 'jogo'; S.open = null; pref('tab', 'hoje'); render(); goTop(); } });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.jogo) { S.kind = 'jogo'; S.open = null; renderSheet(); render(); } });
   document.getElementById('ifile').addEventListener('change', (e) => readImport(e.target.files && e.target.files[0]));
   let got = 0; const mark = () => { if (++got >= 4) S.ready = true; rerender(); };
   const sub = (q, key) => q.onSnapshot((s) => {
