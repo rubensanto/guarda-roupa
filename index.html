@@ -868,6 +868,10 @@ function newDayId(date) { const ids = new Set(S.days.map((d) => d.id)); let n = 
 const TAG_FCP = 'FC Porto', TAG_TREINO = 'Treino';
 const hasTag = (p, t) => !!p && (p.tags || []).some((x) => String(x).toLowerCase() === t.toLowerCase());
 const isPorto = (p) => hasTag(p, TAG_FCP), isTreino = (p) => hasTag(p, TAG_TREINO);
+// a que «armário» pertence cada peça: Normal, Treino ou FC Porto (guardado nas tags, uma de cada vez)
+const BELONG = { normal: 'Normal', treino: 'Treino', porto: 'FC Porto' }, BELONG_IC = { normal: 'shirt', treino: 'dumbbell', porto: 'ball' };
+const belongOf = (p) => isPorto(p) ? 'porto' : isTreino(p) ? 'treino' : 'normal';
+const belongTags = (p, b) => (p.tags || []).filter((x) => !/^(fc porto|treino)$/i.test(String(x))).concat(b === 'porto' ? [TAG_FCP] : b === 'treino' ? [TAG_TREINO] : []);
 const periodStart = () => S.period ? addDays(today(), -(S.period - 1)) : '0000-00-00';
 const wearsOf = (id, since) => byDate(worn().filter((d) => (d.pieces || []).includes(id) && (!since || d.date >= since)));
 const lastWorn = (id) => { const w = wearsOf(id).map((d) => d.date).sort(); return w.length ? w[w.length - 1] : null; };
@@ -1048,14 +1052,19 @@ async function testPush() {
 }
 
 function viewCloset() {
-  const present = SUBS.filter((s) => S.pieces.some((p) => subOf(p) === s.id));
-  const tagF = S.filter === 'tag:fcp' ? isPorto : S.filter === 'tag:treino' ? isTreino : null;
-  const shown = tagF ? present.filter((c) => S.pieces.some((p) => subOf(p) === c.id && tagF(p))) : present.filter((c) => S.filter === 'all' || c.id === S.filter);
-  let h = '<div class="top"><div class="head"><p class="eyebrow">' + S.pieces.length + ' peças</p><h1>Armário</h1></div><button class="ibtn" data-new-piece aria-label="Nova peça" title="Nova peça">' + I('plus', 20) + '</button></div>';
-  h += '<div class="chips" role="group" aria-label="Filtrar"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Tudo</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('')
-    + (S.pieces.some(isPorto) ? '<button class="chip" data-filter="tag:fcp" aria-pressed="' + (S.filter === 'tag:fcp') + '">' + I('ball', 15) + 'FC Porto</button>' : '') + (S.pieces.some(isTreino) ? '<button class="chip" data-filter="tag:treino" aria-pressed="' + (S.filter === 'tag:treino') + '">' + I('dumbbell', 15) + 'Treino</button>' : '') + '</div>';
+  const cg = BELONG[S.cgroup] ? S.cgroup : 'all', inG = (p) => cg === 'all' || belongOf(p) === cg;
+  if (String(S.filter).startsWith('tag:')) S.filter = 'all';
+  const pool = S.pieces.filter(inG);
+  const present = SUBS.filter((s) => pool.some((p) => subOf(p) === s.id));
+  if (S.filter !== 'all' && !present.some((c) => c.id === S.filter)) S.filter = 'all';
+  const tagF = cg === 'all' ? null : inG;
+  const shown = present.filter((c) => S.filter === 'all' || c.id === S.filter);
+  const nG = (g) => S.pieces.filter((p) => belongOf(p) === g).length;
+  let h = '<div class="top"><div class="head"><p class="eyebrow">' + (cg === 'all' ? S.pieces.length + ' peças' : pool.length + ' de ' + S.pieces.length + ' peças') + '</p><h1>Armário</h1></div><button class="ibtn" data-new-piece aria-label="Nova peça" title="Nova peça">' + I('plus', 20) + '</button></div>';
+  h += '<div class="seg kseg" role="group" aria-label="Que roupa mostrar">' + [['all', 'Tudo', '']].concat(Object.keys(BELONG).map((k) => [k, k === 'porto' ? 'Porto' : BELONG[k], BELONG_IC[k]])).map(([k, l, ic]) => '<button data-cgroup="' + k + '" aria-pressed="' + (cg === k) + '" title="' + (k === 'all' ? 'Tudo' : BELONG[k]) + '" aria-label="' + (k === 'all' ? 'Tudo' : BELONG[k]) + ' (' + (k === 'all' ? S.pieces.length : nG(k)) + ')">' + (ic ? I(ic, 19) : '<span>' + l + '</span>') + '<small style="opacity:.6">' + (k === 'all' ? S.pieces.length : nG(k)) + '</small></button>').join('') + '</div>';
+  h += '<div class="chips" role="group" aria-label="Filtrar por categoria"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Todas</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('') + '</div>';
   h += '<div class="toolbar"><label for="sort">' + I('sliders', 16) + '<select id="sort" aria-label="Ordenar em cada categoria">' + SORTS.map((s) => '<option value="' + s.id + '"' + (S.sort === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></label></div>';
-  if (!shown.length) return h + '<div class="empty">' + (S.pieces.length ? 'Nada nesta categoria ainda.' : 'O armário está vazio. Envia a primeira foto no separador Hoje.') + '</div>';
+  if (!shown.length) return h + '<div class="empty">' + (!S.pieces.length ? 'O armário está vazio. Envia a primeira foto no separador Hoje.' : cg === 'porto' ? 'Ainda não marcaste nenhuma peça como «FC Porto». Abre uma peça e, em «Pertence a», toca na bola.' : cg === 'treino' ? 'Ainda não marcaste nenhuma peça como «Treino». Abre uma peça e, em «Pertence a», toca no halteres.' : 'Nada nesta categoria ainda.') + '</div>';
   h += shown.map((c) => {
     const list = sortPieces(S.pieces.filter((p) => subOf(p) === c.id && (!tagF || tagF(p))));
     const body = '<section class="stack" aria-labelledby="cat-' + c.id + '"><div class="sec"><h2 id="cat-' + c.id + '">' + c.label + '</h2><span class="eyebrow">' + list.length + '</span></div><div class="grid">' + list.map(tileHtml).join('') + '</div></section>';
@@ -1381,9 +1390,14 @@ function proposals() {
   // num treino as camadas de cima são só de treino (sem casaco nem camisola «normais» por cima); só se não houver
   // nenhuma parte de cima de treino é que se vai buscar uma ao armário normal
   const trTop = kind === 'treino' && base.some((p) => isTreino(p) && ['tee', 'shirt', 'sweater'].includes(subOf(p)));
-  const topBy = (sub) => trTop ? by(sub).filter(isTreino) : by(sub);
-  const tees = topBy('tee'), shirts = topBy('shirt'), sweaters = topBy('sweater'), outers = kind === 'treino' ? by('outer').filter(isTreino) : slot(by('outer')), shoes = fShoe ? [fShoe] : slot(by('shoe'));
-  const bottoms = fBottom ? [fBottom] : slot(base.filter((p) => groupOf(p) === 'bottom'));
+  // num jogo vai-se todo do Porto: partes de cima e casaco só do Porto (se já houver alguma registada); só as calças
+  // (e o calçado, se não houver do Porto) vêm do armário normal. Uma peça escolhida à mão é uma exceção e entra sempre.
+  const isJogo = kind === 'jogo', fIds = new Set(focus.map((p) => p.id)), portoOk = (p) => isPorto(p) || fIds.has(p.id);
+  const jTop = isJogo && base.some((p) => isPorto(p) && ['tee', 'shirt', 'sweater'].includes(subOf(p)));
+  const topBy = (sub) => trTop ? by(sub).filter(isTreino) : jTop ? by(sub).filter(portoOk) : by(sub);
+  const outers = kind === 'treino' ? by('outer').filter(isTreino) : isJogo && by('outer').some(isPorto) ? by('outer').filter(portoOk) : slot(by('outer'));
+  const tees = topBy('tee'), shirts = topBy('shirt'), sweaters = topBy('sweater'), shoes = fShoe ? [fShoe] : slot(by('shoe'));
+  const bottoms = fBottom ? [fBottom] : isJogo ? base.filter((p) => groupOf(p) === 'bottom') : slot(base.filter((p) => groupOf(p) === 'bottom'));
   // num jogo à noite veste-se para a noite, não para a tarde
   let T = wx.feel; if (game && hourOf(game) >= 18) T = Math.min(T, wx.w ? Math.round((wx.w.amin + 2) * 10) / 10 : T - 4);
   const target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
@@ -1394,11 +1408,15 @@ function proposals() {
   tees.forEach((a) => shirts.forEach((b) => { if (openKind(b) === 'full') tops.push([a, b]); }));
   shirts.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
   if (fTops.length) tops = tops.filter((tp) => fTops.every((p) => tp.includes(p)));
-  if (want && tops.some((tp) => tp.some(want))) tops = tops.filter((tp) => tp.some(want));
+  if (want && !fTops.some((p) => !want(p)) && tops.some((tp) => tp.some(want))) tops = tops.filter((tp) => tp.some(want));
   const forceOuter = want && !fOuter && T <= 21 && outers.some(want);
   const outs = fOuter ? [fOuter] : forceOuter ? outers : T > 23 ? [null] : [null, ...outers];
   // acessórios do Porto (cachecol, gorro…) vão sempre a um jogo, um de cada tipo
-  const accTypes = new Set(), fcpAcc = kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p) && !accTypes.has((p.design && p.design.type) || p.name) && accTypes.add((p.design && p.design.type) || p.name)).map((p) => p.id) : [];
+  // um de cada tipo; boné, chapéu e gorro contam como «cabeça» (só um): gorro com frio, boné/chapéu no resto; entre iguais, o mais parado
+  const accIdle = (p) => { const s = sinceLast(p); return s === null ? 1e6 : s; };
+  const accType = (p) => { const ty = (p.design && p.design.type) || ''; const n = txtOf(p); const k = ty || (/gorro/.test(n) ? 'gorro' : /bon[ée]|chap[ée]u|\bcap\b/.test(n) ? 'bone' : /cachecol/.test(n) ? 'cachecol' : p.name); return ['bone', 'chapeu', 'gorro'].includes(k) ? 'cabeca' : k; };
+  const headPref = (p) => { const n = txtOf(p), g = ((p.design && p.design.type) || '') === 'gorro' || /gorro/.test(n); return T < 12 ? (g ? 1 : 0) : (g ? 0 : 1); };
+  const accTypes = new Set(), fcpAcc = kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p)).sort((a, b) => (accType(a) === 'cabeca' && accType(b) === 'cabeca' ? headPref(b) - headPref(a) : 0) || accIdle(b) - accIdle(a)).filter((p) => !accTypes.has(accType(p)) && accTypes.add(accType(p))).map((p) => p.id) : [];
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1502,14 +1520,14 @@ function viewPropose() {
     h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
   }
   h += '</section>';
-  let list = R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e toca em «Só para treino».</div>'
+  let list = R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e, em «Pertence a», toca no halteres.</div>'
     : R.list.length ? R.list.map(propCard).join('')
     : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo em «Afinar».</div>'
     : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou um calçado, ou já saltaste todas hoje.</div>'
     : '<div class="empty">Para propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado.</div>';
   if (S.kind === 'jogo') {
     const nP = S.pieces.filter(isPorto).length;
-    list = '<div class="fcpz"><span class="pill">' + I('ball', 15) + (nP ? 'Dia de jogo · roupa do Porto sempre' : 'Dia de jogo · azul e branco') + '</span>'
+    list = '<div class="fcpz"><span class="pill">' + I('ball', 15) + (nP ? 'Dia de jogo · tudo do Porto menos as calças' : 'Dia de jogo · azul e branco') + '</span>'
       + (nP ? '' : '<span class="pill" style="font-weight:500">Marca a tua roupa do Porto: Armário › peça › «FC Porto»</span>') + list + '</div>';
   }
   return h + '<section class="stack" aria-label="Propostas">' + list + '</section>' + buildBtn();
@@ -1731,8 +1749,8 @@ function pieceSheet(p) {
     + '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>'
     + '<div style="display:flex;align-items:center;gap:10px"><span class="swatch" style="background:' + esc(p.color || '#999') + '"></span><h2 id="sh-h">' + esc(p.name) + '</h2></div>'
     + '<div class="tags">' + (p.tags || []).filter((x) => !/^(fc porto|treino)$/i.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
-    + '<div class="chips" role="group" aria-label="Marcar a peça" style="flex:none">' + [[TAG_FCP, 'FC Porto'], [TAG_TREINO, 'Só para treino']].map(([k, l]) => '<button class="chip" data-ptag="' + k + '" aria-pressed="' + hasTag(p, k) + '">' + (hasTag(p, k) ? '✓ ' : '') + l + '</button>').join('') + '</div>'
-    + '<p class="status" style="font-size:12px;margin:-6px 0 0">«FC Porto»: entra sempre nos fits dos dias de jogo. «Só para treino»: só aparece nas propostas de treino.</p>'
+    + '<h3 style="margin-bottom:-4px">Pertence a</h3><div class="seg kseg" role="group" aria-label="A que roupa pertence" style="flex:none">' + Object.keys(BELONG).map((k) => '<button data-pbelong="' + k + '" aria-pressed="' + (belongOf(p) === k) + '" title="' + BELONG[k] + '" aria-label="' + BELONG[k] + '">' + I(BELONG_IC[k], 20) + '</button>').join('') + '</div>'
+    + '<p class="status" style="font-size:12px;margin:-6px 0 0">' + { normal: 'Roupa do dia a dia. Nos dias de jogo só as calças e o calçado vêm daqui (a não ser que escolhas uma exceção).', treino: 'Só aparece nas propostas de treino.', porto: 'Entra nos fits dos dias de jogo. Nesses dias, tudo o que não são calças vem da roupa do Porto.' }[belongOf(p)] + '</p>'
     + '<h3>Uso</h3><div class="kv">'
     + '<div><small>Última vez</small><strong>' + (lw ? esc(ago(diffDays(lw, t))) : 'Nunca') + '</strong>' + (lw ? '<small>' + esc(fmtDay(lw)) + '</small>' : '') + '</div>'
     + '<div><small>Total</small><strong>' + all.length + '×</strong><small>em ' + ownDays + ' dias no armário</small></div>'
@@ -3288,6 +3306,7 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-with-pick')) { if (focusPieces().length) { S.withPieces = []; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; S.propOpen = false; S.adding = false; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
+  if (t.dataset.cgroup) { S.cgroup = t.dataset.cgroup; S.filter = 'all'; render(); return; }
   if (t.dataset.statkind) { S.statKind = t.dataset.statkind; render(); return; }
   if (t.dataset.period !== undefined) { S.period = Number(t.dataset.period); pref('period', S.period); render(); return; }
   if (t.dataset.view) { openViewer(t.dataset.view, t.dataset.viewAlt || '', t.dataset.viewKind || 'img'); return; }
@@ -3353,10 +3372,9 @@ document.addEventListener('click', (ev) => {
   }
   if (t.hasAttribute('data-game-fit')) { S.kind = 'jogo'; openPropose(false); return; }
   if (t.hasAttribute('data-push-on')) { enablePush(); return; }
-  if (t.dataset.ptag) {
+  if (t.dataset.pbelong) {
     const p = pieceById(S.open); if (!p || p.virtual || !db) return;
-    const tag = t.dataset.ptag, tags = (p.tags || []).filter((x) => String(x).toLowerCase() !== tag.toLowerCase());
-    if (!hasTag(p, tag)) tags.push(tag);
+    const tags = belongTags(p, t.dataset.pbelong);
     p.tags = tags; renderSheet(); render(); db.doc('pieces/' + p.id).update({ tags }).catch(() => {});
     return;
   }
