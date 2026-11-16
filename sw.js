@@ -1,7 +1,7 @@
 // Guarda-Roupa — service worker: lets the app open with no internet.
 // Strategy: app files are served from the cache and refreshed in the background
 // (stale-while-revalidate); Google Fonts are cached the first time they load.
-const CACHE = 'guarda-roupa-v21';
+const CACHE = 'guarda-roupa-v22';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -22,5 +22,23 @@ self.addEventListener('fetch', (e) => {
     if (hit) { e.waitUntil(net); return hit; }
     const res = await net;
     return res || (req.mode === 'navigate' ? cache.match('./index.html') : Response.error());
+  }));
+});
+
+// Notificações (jogos do FC Porto): a função «jogos» no Supabase manda-as por Web Push.
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Guarda-Roupa', {
+    body: d.body || '', tag: d.tag || 'guarda-roupa', renotify: true, icon: 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || './' }
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  const jogo = new URL(url).searchParams.get('jogo');
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const c = list.find((x) => x.url.startsWith(self.registration.scope));
+    if (c) { if (jogo) c.postMessage({ jogo }); return c.focus(); }
+    return self.clients.openWindow(url);
   }));
 });

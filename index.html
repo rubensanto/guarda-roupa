@@ -201,6 +201,12 @@ nav.tabs svg{width:24px;height:24px}
 .sw-custom{background:conic-gradient(#E53935,#FDD835,#43A047,#1E88E5,#8E24AA,#E53935);display:inline-block}
 .sw-custom input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
 .seg-sm{align-self:flex-start}
+.kseg button{min-height:34px;font-size:13px}
+.badge.kb-treino{background:#E4EEDF;color:#3C5A2E}
+.badge.kb-jogo{background:#DCE6F5;color:#123E7C}
+.card.game{border-color:#123E7C;border-left-width:4px}
+.card.game h2{color:#123E7C}
+@media (prefers-color-scheme: dark){.badge.kb-treino{background:#2C3A26;color:#BFD9B2}.badge.kb-jogo{background:#1C2B44;color:#B9CCEE}.card.game{border-color:#6F96D8}.card.game h2{color:#B9CCEE}}
 .seg-sm button{min-height:36px;padding:0 12px;font-size:13px;flex:none}
 .fitview{display:flex;gap:12px;align-items:flex-start}
 .sidx{display:flex;align-items:baseline;gap:6px;width:100%;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-size:14px;color:var(--muted)}
@@ -402,7 +408,7 @@ const LS = (() => {
     docs.forEach((r) => col(r.col).set(r.id, r.data));
     const blobs = await tx('blobs', 'readonly', (s) => reqP(s.getAll()));
     blobs.forEach((r) => urls.set(r.id, URL.createObjectURL(r.blob)));
-    ['pieces', 'fits', 'days', 'uploads'].forEach(col);
+    ['pieces', 'fits', 'days', 'uploads', 'games', 'push'].forEach(col);
     return { db, assets };
   }
 
@@ -643,6 +649,9 @@ const Cloud = (() => {
   return {
     start, sync, signIn, signUp, signOut, changePassword, status,
     user: () => session && session.user,
+    // Edge Function do projeto (ex.: 'jogos?a=test'), com a minha sessão
+    fn: async (path) => (await api('/functions/v1/' + path, { method: 'POST' })).json(),
+    vapid: 'BHF5rgF8TW7aqw6OXrcsttrop_mpwTMnyAW1WQ2SfSnxt6vpw_ffPC37diKocncC5uX8wOrKG-pE1KLYApvRT5Q',
     on: (fn) => { subs.add(fn); return () => subs.delete(fn); }
   };
 })();
@@ -721,11 +730,12 @@ const SORTS = [
   { id: 'name', label: 'Nome (A–Z)' }
 ];
 
-const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
+const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], games: [], kind: 'normal', adding: false, confirmDay: null, ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
   period: 90, fitFilter: 'all', withPieces: [], pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
 let db = null, assets = null;
 S.elements = [];
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('gr-' + k); localStorage.setItem('gr-' + k, v); } catch (e) { return null; } };
+{ const q = new URLSearchParams(location.search); if (q.get('jogo')) { S.tab = 'hoje'; S.kind = 'jogo'; pref('tab', 'hoje'); try { history.replaceState(null, '', location.pathname); } catch (e) {} } } // veio da notificação do jogo
 { const t = pref('tab'); if (t) S.tab = t === 'semana' ? 'fits' : t; const s = pref('sort'); if (s) S.sort = s; const p = pref('period'); if (p !== null && p !== undefined && p !== '') S.period = Number(p); }
 
 // ---------- helpers ----------
@@ -762,8 +772,21 @@ function optSel(scope, id, o) { // the two «not a piece» options of a fit, sid
 }
 const pieceById = (id) => typeof id === 'string' && id[0] === '~' ? (id.slice(0, 3) === '~u:' ? underPiece(id.slice(3)) : sockPiece(id.slice(3))) : S.allPieces.find((p) => p.id === id);
 const worn = () => S.days.filter((d) => d.worn);
+// Um dia pode ter vários outfits: cada um é um doc de 'days' (id 'AAAA-MM-DD', depois 'AAAA-MM-DD~2', '~3'…),
+// com `date`, `slot` e `kind` (normal | treino | jogo). Para as contas de uso, uma peça conta uma vez por dia.
+const KINDS = { normal: 'Normal', treino: 'Treino', jogo: 'Dia de jogo' };
+const kindOf = (o) => (o && KINDS[o.kind] ? o.kind : 'normal');
+const byDate = (list) => { const m = new Map(); list.forEach((d) => { if (!m.has(d.date)) m.set(d.date, d); }); return [...m.values()]; };
+const nDates = (list) => new Set(list.map((d) => d.date)).size;
+const outfitsOn = (date) => S.days.filter((d) => d.date === date && d.worn).sort((a, b) => (a.slot || 1) - (b.slot || 1) || String(a.chosenAt || '').localeCompare(String(b.chosenAt || '')));
+const dayById = (id) => S.days.find((d) => d.id === id);
+function newDayId(date) { const ids = new Set(S.days.map((d) => d.id)); let n = 1; while (ids.has(n === 1 ? date : date + '~' + n)) n++; return { id: n === 1 ? date : date + '~' + n, slot: n }; }
+// TAGS que mudam as propostas: «FC Porto» (usadas sempre nos dias de jogo) e «Treino» (só para treinar)
+const TAG_FCP = 'FC Porto', TAG_TREINO = 'Treino';
+const hasTag = (p, t) => !!p && (p.tags || []).some((x) => String(x).toLowerCase() === t.toLowerCase());
+const isPorto = (p) => hasTag(p, TAG_FCP), isTreino = (p) => hasTag(p, TAG_TREINO);
 const periodStart = () => S.period ? addDays(today(), -(S.period - 1)) : '0000-00-00';
-const wearsOf = (id, since) => worn().filter((d) => (d.pieces || []).includes(id) && (!since || d.date >= since));
+const wearsOf = (id, since) => byDate(worn().filter((d) => (d.pieces || []).includes(id) && (!since || d.date >= since)));
 const lastWorn = (id) => { const w = wearsOf(id).map((d) => d.date).sort(); return w.length ? w[w.length - 1] : null; };
 const addedDay = (p) => (p.addedAt || '').slice(0, 10) || today();
 const sinceLast = (p) => { const l = lastWorn(p.id); return l ? diffDays(l, today()) : null; };
@@ -791,18 +814,13 @@ function buildBtn() {
 
 function viewToday() {
   const t = today();
-  const plan = S.days.find((d) => d.date === t);
+  const outs = outfitsOn(t);
   const pending = S.uploads.length > 0 && !S.pieces.length;
   let h = '<div class="head" style="flex-direction:row;justify-content:space-between;align-items:flex-end;gap:8px"><div><p class="eyebrow">' + esc(fmtDay(t)) + '</p><h1>Hoje</h1></div><button class="chip" data-data-open>Os teus dados' + (backupDue() ? ' •' : '') + '</button></div>';
   if (backupDue()) h += '<p class="note" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>' + (lastBackup() ? 'Já passou uma semana desde a última cópia de segurança.' : 'Ainda não fizeste nenhuma cópia de segurança.') + '</span><button class="chip" data-data-open>Fazer</button></p>';
-  if (plan && (plan.pieces || []).length) {
-    const f = plan.fit && S.fits.find((x) => x.id === plan.fit);
-    h += '<section class="card" aria-labelledby="fit-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="fit-h">' + esc(plan.title || 'Fit de hoje') + '</h2><button class="chip" data-edit-day="' + esc(plan.date) + '">Editar</button></div>'
-      + layerToggles('day', plan.date, uids(plan), plan.closed, plan.opened)
-      + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), 220, plan.closed, plan.opened) + '</div>' + styleHtml('d:' + plan.date, styleOf(uids(plan), plan.closed, plan.opened)) + optSel('day', plan.date, plan)
-      + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
-      + (f ? rateHtml(f) : '') + '</section>';
-  }
+  h += gameHtml();
+  outs.filter((d) => (d.pieces || []).length).forEach((plan, i, all) => { h += outfitCard(plan, i, all.length); });
+  if (outs.length) h += '<button class="btn" data-add-outfit aria-pressed="' + S.adding + '" style="border-style:dashed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>' + (S.adding ? 'A escolher outro outfit para hoje · cancelar' : 'Outro outfit hoje') + '</button>';
   h += topHtml();
   h += '<section class="card" aria-labelledby="up-h"><h2 id="up-h">Foto ou vídeo do dia</h2>'
     + '<div class="seg" role="group" aria-label="Tipo de envio">'
@@ -848,15 +866,108 @@ function sortPieces(list) {
   return list.slice().sort(by);
 }
 
+// ---------- outfits de hoje ----------
+function kindSeg(attr, id, cur, label) {
+  return '<div class="seg kseg" role="group" aria-label="' + esc(label || 'Tipo de outfit') + '">' + Object.keys(KINDS).map((k) => '<button data-' + attr + '="' + esc(id) + '" data-k="' + k + '" aria-pressed="' + (cur === k) + '">' + KINDS[k] + '</button>').join('') + '</div>';
+}
+function outfitCard(plan, i, n) {
+  const f = dayFit(plan), id = plan.id, kind = kindOf(plan);
+  let h = '<section class="card" aria-label="' + esc(plan.title || 'Fit de hoje') + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div style="min-width:0"><p class="eyebrow">' + (n > 1 ? 'Outfit ' + (i + 1) + ' de ' + n : 'Fit de hoje') + (kind !== 'normal' ? ' · ' + KINDS[kind] : '') + '</p><h2>' + esc(plan.title || 'Fit de hoje') + '</h2></div>'
+    + '<span style="display:flex;gap:6px;flex:none"><button class="chip" data-edit-day="' + esc(id) + '">Editar</button><button class="chip" data-del-day="' + esc(id) + '" aria-label="Tirar este outfit de hoje" title="Tirar de hoje">✕</button></span></div>'
+    + kindSeg('day-kind', id, kind);
+  if (S.confirmDay === id) h += '<div class="card" style="gap:10px;border-color:var(--new-ink)"><p style="margin:0">Tirar este outfit de hoje? O fit continua guardado nos teus fits.</p><div class="row"><button class="btn" data-del-day-cancel>Cancelar</button><button class="btn" data-del-day-ok="' + esc(id) + '" style="background:var(--new-ink);color:var(--surface);border-color:var(--new-ink)">Tirar</button></div></div>';
+  h += layerToggles('day', id, uids(plan), plan.closed, plan.opened)
+    + '<div style="display:flex;justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 180 : 220, plan.closed, plan.opened) + '</div>' + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened)) + optSel('day', id, plan)
+    + '<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + plan.pieces.map(pieceById).filter(Boolean).map(tileHtml).join('') + '</div>'
+    + (f ? rateHtml(f) : '');
+  return h + '</section>';
+}
+// o que escolho para hoje vai para um outfit do mesmo tipo (troca-o) ou, se não houver, para um outfit novo;
+// «Outro outfit hoje» obriga a juntar mais um, mesmo do mesmo tipo
+function targetDay(kind) {
+  const t = today();
+  if (!S.adding) { const same = outfitsOn(t).filter((d) => kindOf(d) === kind).pop(); if (same) return { id: same.id, slot: same.slot || 1, replaced: true }; }
+  return newDayId(t);
+}
+async function wearToday(data, kind) {
+  const t = today(), k = KINDS[kind] ? kind : 'normal', tg = targetDay(k), before = outfitsOn(t).length;
+  S.adding = false;
+  await db.doc('days/' + tg.id).set(Object.assign({ date: t, worn: true, closed: false, chosenAt: new Date().toISOString() }, data, { kind: k, slot: tg.slot }));
+  if (!tg.replaced && before) toast('Juntei a hoje: agora tens ' + (before + 1) + ' outfits.');
+  return tg.id;
+}
+
+const goTop = () => setTimeout(() => { const el = document.getElementById('top-h'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 40);
+// ---------- jogos do FC Porto (a função «jogos» no Supabase vai buscá-los e manda a notificação) ----------
+const gameVs = (g) => g.home ? 'FC Porto – ' + g.opponent : g.opponent + ' – FC Porto';
+function nextGame() { const t = today(); return S.games.filter((g) => g.date >= t).sort((a, b) => a.date.localeCompare(b.date) || String(a.time || '').localeCompare(String(b.time || '')))[0] || null; }
+const gameToday = () => { const g = nextGame(); return g && g.date === today() ? g : null; };
+const hourOf = (g) => g && g.time ? Number(g.time.slice(0, 2)) + Number(g.time.slice(3, 5)) / 60 : null;
+function gameHtml() {
+  const g = nextGame(); if (!g) return '';
+  const t = today(), d = diffDays(t, g.date); if (d > 6) return '';
+  const today_ = d === 0, gid = esc(g.id), when = today_ ? 'Hoje' : d === 1 ? 'Amanhã' : fmtDay(g.date);
+  let h = '<section class="card game" aria-labelledby="game-h"><p class="eyebrow">Jogo do Porto · ' + esc(when + (g.time ? ' às ' + g.time : '')) + '</p><h2 id="game-h">' + esc(gameVs(g)) + '</h2>'
+    + '<p class="status" style="margin:0">' + esc([g.competition, g.venue].filter(Boolean).join(' · ')) + '</p>';
+  if (g.going === true) {
+    const has = today_ && outfitsOn(t).some((o) => kindOf(o) === 'jogo');
+    h += '<p style="margin:0">Vais ao jogo. ' + (has ? 'O fit do jogo já está escolhido ✓' : today_ ? 'Escolhe o fit: as propostas abaixo usam a tua roupa do Porto.' : 'No dia aviso-te e proponho o fit.') + '</p>'
+      + '<div class="row">' + (today_ && !has ? '<button class="btn primary" data-game-fit>Ver fits para o jogo</button>' : '') + '<button class="btn" data-game-go="' + gid + '" data-v="">Mudar a resposta</button></div>';
+  } else if (g.going === false) h += '<p style="margin:0">Não vais a este' + (today_ ? '.' : ': não te aviso no dia.') + '</p><button class="btn" data-game-go="' + gid + '" data-v="">Mudar a resposta</button>';
+  else h += '<p style="margin:0">Vais?</p><div class="row"><button class="btn" data-game-go="' + gid + '" data-v="0">Não vou</button><button class="btn primary" data-game-go="' + gid + '" data-v="1">Vou</button></div>';
+  if (g.going !== false) h += pushNudge();
+  return h + '</section>';
+}
+
+// ---------- notificações (Web Push; no iPhone só com a app no ecrã principal) ----------
+function pushState() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent), standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return ios && !standalone ? 'ios-browser' : 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  return Notification.permission === 'granted' && pref('pushId') ? 'on' : 'off';
+}
+function pushNudge() {
+  const st = pushState();
+  if (st === 'on' || st === 'unsupported') return '';
+  if (st === 'ios-browser') return '<p class="note" style="font-size:13px;margin:0">Para te avisar no dia do jogo, abre a app a partir do ícone no ecrã principal e ativa lá as notificações.</p>';
+  if (st === 'denied') return '<p class="note" style="font-size:13px;margin:0">As notificações estão bloqueadas para esta app. Ativa-as nas definições do telemóvel para te avisar no dia do jogo.</p>';
+  return '<button class="btn" data-push-on' + (S.pushBusy ? ' disabled' : '') + '><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>' + (S.pushBusy ? 'A ativar…' : 'Avisar-me nos dias de jogo') + '</button>';
+}
+const b64u = (s) => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+const strHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+async function enablePush() {
+  if (!db) return;
+  S.pushBusy = true; render(); if (S.dataSheet) renderSheet(true);
+  try {
+    if (pushState() === 'unsupported' || pushState() === 'ios-browser') throw new Error('Este browser não deixa receber notificações.');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Não deste autorização para as notificações.');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(Cloud.vapid) });
+    const j = sub.toJSON(), id = 'p-' + strHash(j.endpoint);
+    await db.doc('push/' + id).set({ endpoint: j.endpoint, keys: j.keys, device: (navigator.userAgent || '').slice(0, 160), createdAt: new Date().toISOString() });
+    pref('pushId', id); await Cloud.sync();
+    toast('Pronto: aviso-te neste aparelho nos dias de jogo do Porto.');
+  } catch (e) { toast(e && e.message ? e.message : 'Não foi possível ativar as notificações.'); }
+  S.pushBusy = false; render(); if (S.dataSheet) renderSheet(true);
+}
+async function testPush() {
+  try { await Cloud.sync(); const r = await Cloud.fn('jogos?a=test'); const ok = (r.sent || []).filter((x) => x.ok).length; toast(ok ? 'Enviei uma notificação de teste.' : 'Nenhum aparelho recebeu: ativa as notificações outra vez.'); }
+  catch (e) { toast('Não foi possível enviar o teste (' + (e.message || e) + ').'); }
+}
+
 function viewCloset() {
   const present = SUBS.filter((s) => S.pieces.some((p) => subOf(p) === s.id));
-  const shown = present.filter((c) => S.filter === 'all' || c.id === S.filter);
+  const tagF = S.filter === 'tag:fcp' ? isPorto : S.filter === 'tag:treino' ? isTreino : null;
+  const shown = tagF ? present.filter((c) => S.pieces.some((p) => subOf(p) === c.id && tagF(p))) : present.filter((c) => S.filter === 'all' || c.id === S.filter);
   let h = '<div class="head"><p class="eyebrow">' + S.pieces.length + ' peças</p><h1>O meu armário</h1></div>';
-  h += '<div class="chips" role="group" aria-label="Filtrar"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Tudo</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('') + '</div>';
+  h += '<div class="chips" role="group" aria-label="Filtrar"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Tudo</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('')
+    + (S.pieces.some(isPorto) ? '<button class="chip" data-filter="tag:fcp" aria-pressed="' + (S.filter === 'tag:fcp') + '">FC Porto</button>' : '') + (S.pieces.some(isTreino) ? '<button class="chip" data-filter="tag:treino" aria-pressed="' + (S.filter === 'tag:treino') + '">Treino</button>' : '') + '</div>';
   h += '<div class="toolbar"><label for="sort">Ordenar em cada categoria<select id="sort">' + SORTS.map((s) => '<option value="' + s.id + '"' + (S.sort === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></label><button class="chip" data-new-piece>+ Nova peça</button></div>';
   if (!shown.length) return h + '<div class="empty">' + (S.pieces.length ? 'Nada nesta categoria ainda.' : 'O armário está vazio. Envia a primeira foto no separador Hoje.') + '</div>';
   h += shown.map((c) => {
-    const list = sortPieces(S.pieces.filter((p) => subOf(p) === c.id));
+    const list = sortPieces(S.pieces.filter((p) => subOf(p) === c.id && (!tagF || tagF(p))));
     return '<section class="stack" aria-labelledby="cat-' + c.id + '"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="cat-' + c.id + '">' + c.label + '</h2><span class="eyebrow">' + list.length + '</span></div><div class="grid">' + list.map(tileHtml).join('') + '</div></section>';
   }).join('');
   return h;
@@ -1084,7 +1195,7 @@ function fitOf(ids, not) {
 }
 // the fit of a worn day: «the» fit with its pieces (or, failing that, the one it points to)
 function dayFit(d) { return fitOf(d.pieces) || (d.fit && S.fits.find((x) => x.id === d.fit)) || null; }
-const fitDays = (f) => worn().filter((d) => { const g = dayFit(d); return g && fitKey(g.pieces || []) === fitKey(f.pieces || []); });
+const fitDays = (f) => byDate(worn().filter((d) => { const g = dayFit(d); return g && fitKey(g.pieces || []) === fitKey(f.pieces || []); }));
 function propSkips() { try { const s = JSON.parse(pref('skip') || 'null'); return s && s.day === today() ? s.keys : []; } catch (e) { return []; } }
 // Índice de estilo, 0–100: quão bem fica o conjunto, só pelo que se vê. Seis variáveis com pontos fixos
 // (cores 35 · nº de cores 15 · contraste 15 · calçado 10 · padrões 10 · coerência 15). O tempo e as minhas
@@ -1167,13 +1278,24 @@ const focusLabel = (fs) => fs.length > 2 ? fs.length + ' peças escolhidas' : fs
 function proposals() {
   const wx = wxNow(), skips = propSkips(), focus = focusPieces(), fOf = (test) => focus.find(test) || null;
   const fShoe = fOf((p) => subOf(p) === 'shoe'), fBottom = fOf((p) => groupOf(p) === 'bottom'), fOuter = fOf((p) => subOf(p) === 'outer'), fTops = focus.filter((p) => ['tee', 'shirt', 'sweater'].includes(subOf(p)));
-  const minIdx = minStyle();
-  const key = [minIdx, focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.date + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  const minIdx = minStyle(), kind = S.kind, game = kind === 'jogo' ? gameToday() : null;
+  const key = [minIdx, kind, game ? game.time : '', focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.tags || []).join() + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.id + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
-  const by = (sub) => S.pieces.filter((p) => subOf(p) === sub);
-  const tees = by('tee'), shirts = by('shirt'), sweaters = by('sweater'), outers = by('outer'), shoes = fShoe ? [fShoe] : by('shoe');
-  const bottoms = fBottom ? [fBottom] : S.pieces.filter((p) => groupOf(p) === 'bottom');
-  const T = wx.feel, target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
+  // tipo de outfit: a roupa de treino só entra nos de treino; nos de jogo, a do Porto ocupa a sua vaga sempre que exista
+  const base = S.pieces.filter((p) => kind === 'treino' || !isTreino(p)), want = kind === 'treino' ? isTreino : kind === 'jogo' ? isPorto : null;
+  const res0 = { wx, list: [], kind };
+  if (kind === 'treino' && !S.pieces.some(isTreino)) { res0.empty = 'treino'; propCache = { key, res: res0 }; return res0; }
+  const slot = (list) => { if (!want) return list; const m = list.filter(want); return m.length ? m : list; };
+  const by = (sub) => base.filter((p) => subOf(p) === sub);
+  // num treino as camadas de cima são só de treino (sem casaco nem camisola «normais» por cima); só se não houver
+  // nenhuma parte de cima de treino é que se vai buscar uma ao armário normal
+  const trTop = kind === 'treino' && base.some((p) => isTreino(p) && ['tee', 'shirt', 'sweater'].includes(subOf(p)));
+  const topBy = (sub) => trTop ? by(sub).filter(isTreino) : by(sub);
+  const tees = topBy('tee'), shirts = topBy('shirt'), sweaters = topBy('sweater'), outers = kind === 'treino' ? by('outer').filter(isTreino) : slot(by('outer')), shoes = fShoe ? [fShoe] : slot(by('shoe'));
+  const bottoms = fBottom ? [fBottom] : slot(base.filter((p) => groupOf(p) === 'bottom'));
+  // num jogo à noite veste-se para a noite, não para a tarde
+  let T = wx.feel; if (game && hourOf(game) >= 18) T = Math.min(T, wx.w ? Math.round((wx.w.amin + 2) * 10) / 10 : T - 4);
+  const target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
   // top combinations, back → front
   let tops = [];
   tees.forEach((a) => tops.push([a])); shirts.forEach((a) => tops.push([a])); sweaters.forEach((a) => tops.push([a]));
@@ -1181,7 +1303,11 @@ function proposals() {
   tees.forEach((a) => shirts.forEach((b) => { if (openKind(b) === 'full') tops.push([a, b]); }));
   shirts.forEach((a) => sweaters.forEach((b) => tops.push([a, b])));
   if (fTops.length) tops = tops.filter((tp) => fTops.every((p) => tp.includes(p)));
-  const outs = fOuter ? [fOuter] : T > 23 ? [null] : [null, ...outers];
+  if (want && tops.some((tp) => tp.some(want))) tops = tops.filter((tp) => tp.some(want));
+  const forceOuter = want && !fOuter && T <= 21 && outers.some(want);
+  const outs = fOuter ? [fOuter] : forceOuter ? outers : T > 23 ? [null] : [null, ...outers];
+  // acessórios do Porto (cachecol, gorro…) vão sempre a um jogo, um de cada tipo
+  const accTypes = new Set(), fcpAcc = kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p) && !accTypes.has((p.design && p.design.type) || p.name) && accTypes.add((p.design && p.design.type) || p.name)).map((p) => p.id) : [];
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1196,7 +1322,7 @@ function proposals() {
   const cands = []; let n = 0;
   for (const bottom of bottoms) for (const shoe of shoes) for (const tp of tops) for (const outer of outs) {
     if (n++ % step) continue;
-    const ps = [...tp, ...(outer ? [outer] : []), bottom, shoe], ids = ps.map((p) => p.id), k = fitKey(ids);
+    const ps = [...tp, ...(outer ? [outer] : []), bottom, shoe], ids = ps.map((p) => p.id).concat(fcpAcc), k = fitKey(ids);
     const known = fitBy.get(k);
     if (skips.includes(k) || (known && known.status === 'rejeitada')) continue;
     // --- weather ---
@@ -1217,6 +1343,7 @@ function proposals() {
     vis.push({ p: bottom, w: isShorts ? 2 : 3 }, { p: shoe, w: 1 });
     const hm = harmony({ vis, main, bottom, shoe });
     if (hm.idx < minIdx) continue; // below my «índice mínimo»
+    if (kind === 'jogo') hm.score += 0.25 * ps.filter((p) => isPorto(p) || /^azul$|^branco$/.test(colorFam(p.color).fam)).length; // azul e branco
     // --- history ---
     let hist = 0;
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) hist += pairW.get(ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]) || 0;
@@ -1228,7 +1355,7 @@ function proposals() {
     const idl = ps.reduce((s, p) => s + idle.get(p.id), 0) / ps.length;
     cands.push({ ids, k, ps, wxs, hm, base: wxs + hm.score + hist, idl, known, W });
   }
-  const res = { wx, list: [] };
+  const res = res0;
   if (cands.length) {
     const fo = focus.length; // the chosen pieces are in every candidate, so they do not count as «repeated»
     const share = (a, b) => (a.ids.filter((id) => b.ids.includes(id)).length - fo) / Math.max(1, Math.min(a.ids.length, b.ids.length) - fo);
@@ -1249,6 +1376,8 @@ function proposals() {
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
       if (c.known && typeof c.known.rating === 'number') notes.push('Já lhe deste ' + num(c.known.rating) + ' ★');
+      if (kind === 'jogo') { const n = c.ps.filter(isPorto).length + fcpAcc.length; notes.unshift(n ? n + (n === 1 ? ' peça do Porto' : ' peças do Porto') : 'Azul e branco'); if (game && hourOf(game) >= 18) notes[1] = 'Para a noite: ≈ ' + Math.round(T) + ' °C'; }
+      if (kind === 'treino') notes.unshift('Treino');
       x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null; x.style = c.hm;
     });
   }
@@ -1268,7 +1397,11 @@ function topHtml() {
   wxAuto();
   const R = proposals();
   const focus = focusPieces(), fo = focus.length, pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
-  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Top 3 para hoje') + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>' + wxHtml();
+  const kindT = S.kind === 'treino' ? ' para treinar' : S.kind === 'jogo' ? ' para o jogo' : ' para hoje';
+  let h = '<section class="stack" aria-labelledby="top-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Top 3' + kindT) + '</h2><button class="chip" data-tab="fits">Ver todos os fits</button></div>'
+    + kindSeg('kind-pick', 'p', S.kind, 'Propor fits para') + wxHtml();
+  if (S.kind === 'jogo' && !S.pieces.some(isPorto)) h += '<p class="note" style="font-size:13px;margin:0">Ainda não marcaste roupa do Porto: proponho azul e branco com o que tens. Abre uma peça no armário e toca em «FC Porto».</p>';
+  if (S.kind === 'jogo' && S.pieces.some(isPorto)) h += '<p class="status" style="font-size:13px;margin:0">A roupa do Porto entra sempre; o que não tiveres do Porto vem do armário normal.</p>';
   if (pick.length) {
     h += '<div class="chips"><button class="chip" data-with-pick aria-pressed="' + !!(fo || S.pickPiece) + '" aria-expanded="' + !!(fo || S.pickPiece) + '">Propor com peças à escolha</button>' + (fo ? '<button class="chip" data-with-clear>✕ Todas as peças</button>' : '') + '</div>';
     if (fo || S.pickPiece) h += '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
@@ -1276,16 +1409,17 @@ function topHtml() {
   }
   const mi = minStyle();
   h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
-  h += R.list.length ? R.list.map(propCard).join('') : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo para veres propostas.</div>' : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
+  h += R.empty === 'treino' ? '<div class="empty">Ainda não tens roupa de treino. Abre as peças que usas para treinar e toca em «Só para treino»: passam a aparecer só aqui.</div>' : R.list.length ? R.list.map(propCard).join('') : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo para veres propostas.</div>' : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou calções, ou um calçado para completar; as partes de cima escolhidas podem não se usar juntas; ou já saltaste todas hoje.</div>' : '<div class="empty">Para te propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado no armário.</div>';
   return h + buildBtn() + '</section>';
 }
 async function useProposal(x) {
   if (!x || !db) return;
-  if (x.known) { useFit(x.known.id); return; }
-  const t = today(), d = parse(t), title = 'Proposta de ' + d.getDate() + ' ' + MONTHS[d.getMonth()], reason = x.notes.join(' · ');
+  const known = x.known || fitOf(x.ids), kind = S.kind;
+  if (known) { useFit(known.id, kind); return; }
+  const t = today(), d = parse(t), title = (kind === 'jogo' ? 'Jogo de ' : kind === 'treino' ? 'Treino de ' : 'Proposta de ') + d.getDate() + ' ' + MONTHS[d.getMonth()], reason = x.notes.join(' · ');
   try {
-    const ref = await db.collection('fits').add({ title, pieces: x.ids, reason, tags: ['Proposta do dia'], status: 'proposta', source: 'app', closed: false, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() });
-    await db.doc('days/' + t).set({ date: t, title, pieces: x.ids, reason, worn: true, closed: false, fit: ref.id, chosenAt: new Date().toISOString() });
+    const ref = await db.collection('fits').add({ title, pieces: x.ids, reason, tags: ['Proposta do dia'], status: 'proposta', source: 'app', kind, closed: false, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() });
+    await wearToday({ title, pieces: x.ids, reason, closed: false, fit: ref.id }, kind);
   } catch (e) {}
 }
 
@@ -1306,10 +1440,10 @@ function applyRating(id, r) {
 
 function fitCard(f, compact) {
   const ps = (f.pieces || []).map(pieceById).filter(Boolean);
-  const usedToday = S.days.some((d) => d.date === today() && d.worn && dayFit(d) === f);
+  const usedToday = outfitsOn(today()).some((d) => dayFit(d) === f);
   const saved = f.status === 'gosto';
   let h = '<article class="card" aria-label="' + esc(f.title) + '"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2>' + esc(f.title) + '</h2>'
-    + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : f.source === 'app' ? '<span class="badge">Proposta do dia</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</div>';
+    + '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' + (kindOf(f) !== 'normal' ? '<span class="badge kb-' + kindOf(f) + '">' + KINDS[kindOf(f)] + '</span>' : '') + (f.source === 'eu' ? '<span class="badge">Criado por mim</span>' : f.source === 'app' ? '<span class="badge">Proposta do dia</span>' : saved ? '<span class="badge ok">Guardado</span>' : '') + '</span></div>';
   h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 190, f.closed, f.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>';
   if (!compact) {
@@ -1339,17 +1473,17 @@ function activeFits() {
 function dayCard(d) {
   const ps = (d.pieces || []).map(pieceById).filter(Boolean);
   const f = dayFit(d);
-  return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
+  return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + (kindOf(d) !== 'normal' ? ' <span class="badge kb-' + kindOf(d) + '">' + KINDS[kindOf(d)] + '</span>' : '') + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
     + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
 
 function viewFits() {
-  const list = activeFits().filter((f) => S.fitFilter === 'all' || (S.fitFilter === 'gosto' ? f.status === 'gosto' : f.source === 'eu'));
-  const past = worn().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
+  const list = activeFits().filter((f) => S.fitFilter === 'all' || (S.fitFilter === 'gosto' ? f.status === 'gosto' : KINDS[S.fitFilter] ? kindOf(f) === S.fitFilter : f.source === 'eu'));
+  const past = worn().sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1)).slice(0, 14);
   let h = '<div class="head"><p class="eyebrow">Propostas com o que tens no armário</p><h1>Fits</h1></div>' + topHtml();
   h += '<div class="chips" role="group" aria-label="Mostrar">'
-    + [['all', 'Todos'], ['gosto', 'Guardados'], ['eu', 'Criados por mim']].map(([k, l]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (S.fitFilter === k) + '">' + l + '</button>').join('') + '</div>';
+    + [['all', 'Todos'], ['gosto', 'Guardados'], ['eu', 'Criados por mim'], ['treino', 'Treino'], ['jogo', 'Dia de jogo']].map(([k, l]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (S.fitFilter === k) + '">' + l + '</button>').join('') + '</div>';
   h += '<section class="stack" aria-label="Propostas">';
   h += list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (S.fitFilter === 'all' ? 'Sem propostas. Cria os teus com «Criar o meu fit».' : 'Nada aqui ainda.') + '</div>';
   h += '</section><section class="stack" aria-labelledby="past-h"><h2 id="past-h">O que usaste</h2>';
@@ -1375,7 +1509,7 @@ function viewStats() {
   const avg = rated.length ? rated.reduce((s, f) => s + f.rating, 0) / rated.length : null;
 
   h += '<div class="kpis">'
-    + '<div class="kpi"><small>Dias registados</small><strong>' + days.length + '</strong><span>' + periodLabel() + '</span></div>'
+    + '<div class="kpi"><small>Dias registados</small><strong>' + nDates(days) + '</strong><span>' + periodLabel() + '</span></div>'
     + '<div class="kpi"><small>Armário usado</small><strong>' + (P.length ? Math.round(usedN / P.length * 100) : 0) + '%</strong><span>' + usedN + ' de ' + P.length + ' peças</span></div>'
     + '<div class="kpi"><small>Paradas há 30+ dias</small><strong>' + forgotten.length + '</strong><span>inclui nunca usadas</span></div>'
     + '<div class="kpi"><small>Avaliação média</small><strong>' + (avg == null ? '–' : num(avg.toFixed(1))) + '</strong><span>' + rated.length + ' fits avaliados</span></div>'
@@ -1412,7 +1546,7 @@ function viewStats() {
       cells += '<i class="' + (on ? 'on' : '') + '" title="' + esc(fmtShort(iso) + (on ? ' · ' + wornSet.get(iso) : ' · sem registo')) + '"></i>';
     }
   }
-  const last84 = worn().filter((d) => d.date >= isoDay(start)).length;
+  const last84 = nDates(worn().filter((d) => d.date >= isoDay(start)));
   h += '<section class="card" aria-labelledby="st-cal"><h2 id="st-cal">Dias registados</h2><p class="status" style="font-size:13px">Últimas 12 semanas · ' + last84 + ' dias com fit registado</p>'
     + '<div class="heatwrap"><div class="heatdays" aria-hidden="true"><span>D</span><span></span><span>T</span><span></span><span>Q</span><span></span><span>S</span></div><div class="heat" role="img" aria-label="Calendário com ' + last84 + ' dias registados nas últimas 12 semanas">' + cells + '</div></div>'
     + '<div class="months" aria-hidden="true">' + monthsLab.map((m) => '<span>' + m + '</span>').join('') + '</div>'
@@ -1431,7 +1565,8 @@ function viewStats() {
 
   // pares mais usados
   const pairs = new Map();
-  days.forEach((d) => { const ids = (d.pieces || []).filter(pieceById).slice().sort(); for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] + '|' + ids[j]; pairs.set(k, (pairs.get(k) || 0) + 1); } });
+  const pairSeen = new Set(); // um par conta uma vez por dia, mesmo que apareça em dois outfits
+  days.forEach((d) => { const ids = (d.pieces || []).filter(pieceById).slice().sort(); for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] + '|' + ids[j]; if (pairSeen.has(d.date + k)) continue; pairSeen.add(d.date + k); pairs.set(k, (pairs.get(k) || 0) + 1); } });
   const topPairs = [...pairs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
   if (topPairs.length) {
     h += '<section class="card" aria-labelledby="st-par"><h2 id="st-par">Combinações que repetes</h2><p class="status" style="font-size:13px">Pares de peças usadas juntas mais vezes</p><div class="pairs">'
@@ -1469,7 +1604,9 @@ function pieceSheet(p) {
     + '<div class="sheet-head"><span class="badge">' + esc(subInfo(subOf(p)).label) + '</span>' + closeBtn() + '</div>'
     + '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>'
     + '<div style="display:flex;align-items:center;gap:10px"><span class="swatch" style="background:' + esc(p.color || '#999') + '"></span><h2 id="sh-h">' + esc(p.name) + '</h2></div>'
-    + '<div class="tags">' + (p.tags || []).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
+    + '<div class="tags">' + (p.tags || []).filter((x) => !/^(fc porto|treino)$/i.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
+    + '<div class="chips" role="group" aria-label="Marcar a peça" style="flex:none">' + [[TAG_FCP, 'FC Porto'], [TAG_TREINO, 'Só para treino']].map(([k, l]) => '<button class="chip" data-ptag="' + k + '" aria-pressed="' + hasTag(p, k) + '">' + (hasTag(p, k) ? '✓ ' : '') + l + '</button>').join('') + '</div>'
+    + '<p class="status" style="font-size:12px;margin:-6px 0 0">«FC Porto»: entra sempre nos fits dos dias de jogo. «Só para treino»: só aparece nas propostas de treino.</p>'
     + '<h3>Uso</h3><div class="kv">'
     + '<div><small>Última vez</small><strong>' + (lw ? esc(ago(diffDays(lw, t))) : 'Nunca') + '</strong>' + (lw ? '<small>' + esc(fmtDay(lw)) + '</small>' : '') + '</div>'
     + '<div><small>Total</small><strong>' + all.length + '×</strong><small>em ' + ownDays + ' dias no armário</small></div>'
@@ -1507,10 +1644,11 @@ function builderHtml() {
   const groups = SUBS.map((s) => ({ s, ps: S.pieces.filter((p) => subOf(p) === s.id) })).filter((g) => g.ps.length);
   const hint = { outer: 'opcional · 1 no máximo', top: '1 por tipo · podes juntar t-shirt e camisola', bottom: 'obrigatório · só 1 (calças ou calções)', shoe: 'obrigatório · só 1', acc: 'opcional' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
-    + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar o fit de hoje' : B.editFit ? 'Editar fit' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
+    + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar este outfit' : B.editFit ? 'Editar fit' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
     + (B.editDay ? '' : B.editFit ? '<p class="note">Muda o nome, as peças ou as opções. Os dias em que já o usaste ficam como estavam.</p>' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
       : activeFits().length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
         + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(uids(f), 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
+    + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
     + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
@@ -1530,13 +1668,13 @@ function builderHtml() {
 function editFitBuilder(id) { // change this fit itself: name, pieces and options
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null;
-  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: f.title || '', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', editFit: f.id };
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: f.title || '', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), editFit: f.id };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null;
-  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', baseTitle: f.title || 'Fit' };
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), baseTitle: f.title || 'Fit' };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function togglePick(id) {
@@ -1558,28 +1696,28 @@ async function saveBuilder(mode) {
   const title = (nameEl && nameEl.value.trim()) || 'O meu fit';
   const pieces = B.sel.slice().sort((a, b) => SUB_ORDER.indexOf(subOf(pieceById(a))) - SUB_ORDER.indexOf(subOf(pieceById(b))));
   try {
-    const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened);
+    const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened), kind = KINDS[B.kind] ? B.kind : 'normal';
     if (mode === 'fit') {
       const f = S.fits.find((x) => x.id === B.editFit); if (!f) { S.builder = null; renderSheet(); return; }
       const other = fitOf(pieces, f.id);
       if (other) { // now the same pieces as another fit: they become one (that one), with this one's rating if it had none
-        const patch = { closed, opened, under, socks };
+        const patch = { closed, opened, under, socks, kind };
         if (typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
         if (f.status === 'gosto' && other.status !== 'gosto') patch.status = 'gosto';
         const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
         if (auto(other.title) && !auto(title)) patch.title = title;
         await db.doc('fits/' + other.id).update(patch);
-        for (const d of S.days.filter((x) => x.fit === f.id)) await db.doc('days/' + d.date).update({ fit: other.id });
+        for (const d of S.days.filter((x) => x.fit === f.id)) await db.doc('days/' + d.id).update({ fit: other.id });
         await db.doc('fits/' + f.id).delete();
         toast('Já tinhas «' + (other.title || 'Fit') + '» com estas peças: ficaram um só.');
       } else {
-        await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, editedAt: new Date().toISOString() });
+        await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, kind, editedAt: new Date().toISOString() });
         toast('Fit atualizado.');
       }
       S.builder = null; renderSheet(); render(); return;
     }
     if (mode === 'edit') {
-      const t = B.editDay, day = S.days.find((x) => x.date === t) || {};
+      const day = dayById(B.editDay) || { id: B.editDay, date: today() }, t = day.date;
       const f = day.fit && S.fits.find((x) => x.id === day.fit);
       const same = f && f.pieces && fitKey(f.pieces) === fitKey(pieces) && (f.under || '') === under && (f.socks || '') === socks;
       const other = fitOf(pieces, f && f.id); // these pieces are already a fit: the day becomes that one
@@ -1587,14 +1725,15 @@ async function saveBuilder(mode) {
       if (other) {
         fitId = other.id;
         const patch = { closed, opened, under, socks, lastUsed: t, timesUsed: fitDays(other).filter((x) => x.date !== t).length + 1 };
+        if (kind !== 'normal' && kindOf(other) === 'normal') patch.kind = kind;
         if (f && typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
         if (other.status !== 'gosto') patch.status = 'gosto';
         await db.doc('fits/' + other.id).update(patch);
-        if (f && f.source === 'eu' && !S.days.some((x) => x.date !== t && x.fit === f.id)) await db.doc('fits/' + f.id).delete(); // the copy made just for this day
+        if (f && f.source === 'eu' && !S.days.some((x) => x.id !== day.id && x.fit === f.id)) await db.doc('fits/' + f.id).delete(); // the copy made just for this day
       }
-      else if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks });
-      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
-      await db.doc('days/' + t).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
+      else if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, kind });
+      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
+      await db.doc('days/' + day.id).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, kind, slot: day.slot || 1, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
       S.builder = null; renderSheet(); return;
     }
     const t = today(), old = fitOf(pieces);
@@ -1604,14 +1743,15 @@ async function saveBuilder(mode) {
     if (old) {
       fitId = old.id;
       const patch = { closed, opened, under, socks };
+      if (kind !== 'normal') patch.kind = kind;
       if (old.status !== 'gosto') patch.status = 'gosto';
       const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
       if (auto(old.title) && !auto(title)) patch.title = title; // a name I typed replaces an automatic one
       await db.doc('fits/' + old.id).update(patch);
-    } else fitId = (await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', closed, opened, under, socks, createdAt: new Date().toISOString() })).id;
-    for (const d of past) if (d.fit !== fitId) await db.doc('days/' + d.date).update({ fit: fitId });
-    const dates = past.map((d) => d.date).concat(mode === 'hoje' ? [t] : []).sort();
-    if (mode === 'hoje') await db.doc('days/' + t).set({ date: t, title, pieces, reason: '', worn: true, closed, opened, under, socks, fit: fitId, chosenAt: new Date().toISOString() });
+    } else fitId = (await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, createdAt: new Date().toISOString() })).id;
+    for (const d of past) if (d.fit !== fitId) await db.doc('days/' + d.id).update({ fit: fitId });
+    const dates = [...new Set(past.map((d) => d.date).concat(mode === 'hoje' ? [t] : []))].sort();
+    if (mode === 'hoje') await wearToday({ title, pieces, reason: '', closed, opened, under, socks, fit: fitId }, kind);
     if (dates.length) await db.doc('fits/' + fitId).update({ lastUsed: dates[dates.length - 1], timesUsed: dates.length });
     S.builder = null; toast(old ? 'Já tinhas um fit com estas peças: «' + (old.title || 'Fit') + '». Fica tudo nesse.' : past.length ? 'Juntei-o ' + (past.length === 1 ? 'ao dia em que já o usaste' : 'aos ' + past.length + ' dias em que já o usaste') + '.' : '');
     renderSheet(); render();
@@ -1683,11 +1823,13 @@ async function removePiece(id) {
   if (!db) return;
   try { await db.doc('pieces/' + id).update({ removed: true, removedAt: new Date().toISOString() }); S.open = null; S.confirmDel = false; renderSheet(); } catch (e) {}
 }
-async function useFit(id) {
+async function useFit(id, kind) {
   const f = S.fits.find((x) => x.id === id); if (!f || !db) return;
   const t = today();
+  kind = kind || (kindOf(f) !== 'normal' ? kindOf(f) : S.kind);
   try {
-    await db.doc('days/' + t).set({ date: t, title: f.title, pieces: f.pieces || [], reason: f.reason || '', worn: true, closed: !!f.closed, opened: f.opened || [], under: f.under || '', socks: f.socks || '', fit: f.id, chosenAt: new Date().toISOString() });
+    await wearToday({ title: f.title, pieces: f.pieces || [], reason: f.reason || '', closed: !!f.closed, opened: f.opened || [], under: f.under || '', socks: f.socks || '', fit: f.id }, kind);
+    if (kind !== 'normal' && kindOf(f) === 'normal' && f.source !== 'eu') await db.doc('fits/' + f.id).update({ kind });
     await db.doc('fits/' + f.id).update({ lastUsed: t, timesUsed: (f.timesUsed || 0) + 1 });
   } catch (e) {}
 }
@@ -2923,12 +3065,20 @@ Cloud.on(() => { if (S.dataSheet) renderSheet(true); });
 function fmtBytes(n) { if (!n && n !== 0) return '–'; if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB'; return (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB'; }
 function lastBackup() { return pref('lastBackup') || ''; }
 function backupDue() { if (Cloud.user()) return false; const l = lastBackup(); if (!l) return S.pieces.length > 0; return (Date.now() - new Date(l).getTime()) > 7 * 86400000; }
+function notifHtml() {
+  const g = nextGame(), st = pushState();
+  let h = '<div class="card" style="gap:8px"><h3>Jogos do FC Porto</h3><p class="status" style="margin:0;font-size:13px">' + (g ? 'Próximo: ' + esc(gameVs(g)) + ' · ' + esc(fmtShort(g.date) + (g.time ? ' às ' + g.time : '')) + (g.competition ? ' · ' + esc(g.competition) : '') : 'Ainda sem próximo jogo (o calendário é atualizado de hora a hora).') + '</p>';
+  if (st === 'on') h += '<p class="status" style="margin:0;font-size:13px">Notificações ativas neste aparelho: no dia do jogo pergunto-te se vais.</p><button class="btn" data-dp-pushtest>Enviar notificação de teste</button>';
+  else if (st === 'off') h += '<button class="btn" data-dp-push' + (S.pushBusy ? ' disabled' : '') + '>' + (S.pushBusy ? 'A ativar…' : 'Ativar notificações neste aparelho') + '</button>';
+  else h += '<p class="status" style="margin:0;font-size:13px">' + (st === 'ios-browser' ? 'No iPhone, abre a app pelo ícone do ecrã principal para ativar as notificações.' : st === 'denied' ? 'As notificações estão bloqueadas nas definições do aparelho.' : 'Este browser não recebe notificações.') + '</p>';
+  return h + '</div>';
+}
 function dataSheetHtml() {
   const D = S.dataSheet, u = D.usage;
   let h = '<div class="sheet-wrap"><button class="scrim" data-dp-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="dp-h">'
     + '<div class="sheet-head"><h2 id="dp-h">Os teus dados</h2><button class="x" data-dp-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
-    + cloudHtml()
-    + '<div class="kv"><div><small>Peças</small><strong>' + S.pieces.length + '</strong></div><div><small>Dias registados</small><strong>' + S.days.filter((d) => d.worn).length + '</strong></div>'
+    + cloudHtml() + notifHtml()
+    + '<div class="kv"><div><small>Peças</small><strong>' + S.pieces.length + '</strong></div><div><small>Dias registados</small><strong>' + nDates(worn()) + '</strong></div>'
     + '<div><small>Fotos e desenhos</small><strong>' + (u ? u.files : '…') + '</strong><small>' + (u ? fmtBytes(u.bytes) : '') + '</small></div>'
     + '<div><small>Última cópia</small><strong style="font-size:15px">' + (lastBackup() ? esc(fmtShort(lastBackup().slice(0, 10))) : 'Nunca') + '</strong></div></div>'
     + (u && u.persisted === false ? '<p class="note" style="font-size:13px">O iPhone pode apagar dados de sites pouco usados. Adiciona a app ao ecrã principal e toca em «Proteger dados».</p><button class="btn" data-dp-persist>Proteger dados neste aparelho</button>' : '')
@@ -2990,6 +3140,8 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (t.hasAttribute('data-dp-sync')) { Cloud.sync(); return; }
+  if (t.hasAttribute('data-dp-push')) { enablePush(); return; }
+  if (t.hasAttribute('data-dp-pushtest')) { testPush(); return; }
   if (t.hasAttribute('data-dp-signout')) { S.dataSheet = null; renderSheet(true); Cloud.signOut(); return; }
   if (t.hasAttribute('data-dp-persist')) { LS.askPersist().then(async () => { if (S.dataSheet) { S.dataSheet.usage = await LS.usage(); renderSheet(true); } }); return; }
 });
@@ -3019,8 +3171,8 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.delOk) { removePiece(t.dataset.delOk); return; }
   if (t.dataset.open) { S.builder = null; S.confirmDel = false; S.open = t.dataset.open; renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0; return; }
   if (t.hasAttribute('data-close')) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); return; }
-  if (t.hasAttribute('data-build')) { S.open = null; S.builder = { sel: [], title: '' }; renderSheet(); return; }
-  if (t.dataset.editDay) { const d = S.days.find((x) => x.date === t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', socks: d.socks || '', editDay: d.date }; renderSheet(); } return; }
+  if (t.hasAttribute('data-build')) { S.open = null; S.builder = { sel: [], title: '', kind: S.kind }; renderSheet(); return; }
+  if (t.dataset.editDay) { const d = dayById(t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', socks: d.socks || '', kind: kindOf(d), editDay: d.id }; renderSheet(); } return; }
   if (t.hasAttribute('data-new-piece')) { openDesigner(null); return; }
   if (t.dataset.redesign) { const p = pieceById(t.dataset.redesign); if (p) openDesigner(p, (id) => { S.open = p.id; }); return; }
   if (t.hasAttribute('data-b-newpiece')) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; openDesigner(null, (id) => { if (id && S.builder) { S.builder.pendingPick = id; } }); return; }
@@ -3032,7 +3184,7 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.kind) { S.upKind = t.dataset.kind; S.msg = ''; render(); return; }
   if (t.dataset.lt) { // open / close one layer (casaco, camisola, camisa), each on its own
     const scope = t.dataset.lt, id = t.dataset.ltId, layer = t.dataset.ltLayer, on = t.dataset.ltOpen === '1';
-    const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : S.days.find((x) => x.date === id);
+    const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : dayById(id);
     if (!tgt) return;
     const patch = layer === 'outer' ? { closed: !on } : { opened: (tgt.opened || []).filter((x) => x !== layer).concat(on ? [layer] : []) };
     Object.assign(tgt, patch);
@@ -3048,8 +3200,32 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.propUse || t.dataset.propEdit || t.dataset.propSkip) {
     const x = proposals().list[Number(t.dataset.propUse || t.dataset.propEdit || t.dataset.propSkip)]; if (!x) return;
     if (t.dataset.propUse) useProposal(x);
-    else if (t.dataset.propEdit) { S.open = null; S.builder = { sel: x.ids.slice(), title: '' }; renderSheet(); }
+    else if (t.dataset.propEdit) { S.open = null; S.builder = { sel: x.ids.slice(), title: '', kind: S.kind }; renderSheet(); }
     else { pref('skip', JSON.stringify({ day: today(), keys: propSkips().concat(x.key) })); render(); }
+    return;
+  }
+  if (t.dataset.kindPick) { S.kind = t.dataset.k; render(); return; }
+  if (t.dataset.bkind) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; S.builder.kind = t.dataset.k; renderSheet(); return; }
+  if (t.dataset.dayKind) { const d = dayById(t.dataset.dayKind); if (!d || !db) return; d.kind = t.dataset.k; render(); db.doc('days/' + d.id).update({ kind: t.dataset.k }).catch(() => {}); return; }
+  if (t.hasAttribute('data-add-outfit')) { S.adding = !S.adding; render(); if (S.adding) goTop(); return; }
+  if (t.dataset.delDay) { S.confirmDay = S.confirmDay === t.dataset.delDay ? null : t.dataset.delDay; render(); return; }
+  if (t.hasAttribute('data-del-day-cancel')) { S.confirmDay = null; render(); return; }
+  if (t.dataset.delDayOk) { const id = t.dataset.delDayOk; S.confirmDay = null; if (db) db.doc('days/' + id).delete().then(() => toast('Tirei esse outfit de hoje.')).catch(() => {}); return; }
+  if (t.dataset.gameGo) {
+    const g = S.games.find((x) => x.id === t.dataset.gameGo); if (!g || !db) return;
+    const going = t.dataset.v === '1' ? true : t.dataset.v === '0' ? false : null;
+    g.going = going; if (going && g.date === today()) S.kind = 'jogo';
+    render(); db.doc('games/' + g.id).update({ going, answeredAt: new Date().toISOString() }).catch(() => {});
+    if (going && g.date === today() && !outfitsOn(today()).some((o) => kindOf(o) === 'jogo')) goTop();
+    return;
+  }
+  if (t.hasAttribute('data-game-fit')) { S.kind = 'jogo'; render(); goTop(); return; }
+  if (t.hasAttribute('data-push-on')) { enablePush(); return; }
+  if (t.dataset.ptag) {
+    const p = pieceById(S.open); if (!p || p.virtual || !db) return;
+    const tag = t.dataset.ptag, tags = (p.tags || []).filter((x) => String(x).toLowerCase() !== tag.toLowerCase());
+    if (!hasTag(p, tag)) tags.push(tag);
+    p.tags = tags; renderSheet(); render(); db.doc('pieces/' + p.id).update({ tags }).catch(() => {});
     return;
   }
   if (t.dataset.fitfilter) { S.fitFilter = t.dataset.fitfilter; render(); return; }
@@ -3068,7 +3244,7 @@ document.addEventListener('change', (ev) => { const el = ev.target; if (el && el
 document.addEventListener('change', (ev) => { // camisola interior of a fit, of a day, or of the fit being built
   const t = ev.target; if (!t || !t.dataset || !t.dataset.usel) return;
   const scope = t.dataset.usel, id = t.dataset.uselId, fld = t.dataset.uselF === 'socks' ? 'socks' : 'under', val = OPTS[fld][1][t.value] ? t.value : '';
-  const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : S.days.find((x) => x.date === id);
+  const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : dayById(id);
   if (!tgt) return;
   tgt[fld] = val;
   if (scope === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); return; }
@@ -3086,6 +3262,7 @@ async function boot() {
   catch (e) { S.ready = true; S.offline = true; render(); return; }
   Cloud.on(Login.render); Cloud.start(); Login.render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done && !S.designer && !S.builder) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}); }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.jogo) { S.tab = 'hoje'; S.kind = 'jogo'; S.open = null; pref('tab', 'hoje'); render(); goTop(); } });
   document.getElementById('ifile').addEventListener('change', (e) => readImport(e.target.files && e.target.files[0]));
   let got = 0; const mark = () => { if (++got >= 4) S.ready = true; rerender(); };
   const sub = (q, key) => q.onSnapshot((s) => {
@@ -3100,6 +3277,7 @@ async function boot() {
   sub(db.collection('uploads').orderBy('createdAt', 'desc').limit(60), 'uploads');
   sub(db.collection('days').orderBy('date', 'desc').limit(1000), 'days');
   sub(db.collection('fits').limit(500), 'fits');
+  db.collection('games').onSnapshot((s) => { S.games = s.docs.map((x) => ({ id: x.id, ...x.data() })); if (S.ready) rerender(); }, () => {});
   db.collection('elements').onSnapshot((s) => { S.elements = s.docs.map((x) => ({ id: x.id, ...x.data() })); if (S.designer && S.designer.free && document.getElementById('fr-wrap') && S.designer.free.libOpen) frRender(); }, () => {});
 }
 boot();
