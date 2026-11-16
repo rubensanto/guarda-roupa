@@ -771,7 +771,8 @@ function optSel(scope, id, o) { // the two «not a piece» options of a fit, sid
       + Object.keys(T).map((k) => '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + T[k][0] + '</option>').join('') + '</select></label>'; }).join('') + '</div>';
 }
 const pieceById = (id) => typeof id === 'string' && id[0] === '~' ? (id.slice(0, 3) === '~u:' ? underPiece(id.slice(3)) : sockPiece(id.slice(3))) : S.allPieces.find((p) => p.id === id);
-const worn = () => S.days.filter((d) => d.worn);
+// S.wornKind só é posto enquanto as Estatísticas se desenham (filtro por tipo): tudo o que conta usos passa a ver só esse tipo
+const worn = () => S.days.filter((d) => d.worn && (!S.wornKind || kindOf(d) === S.wornKind));
 // Um dia pode ter vários outfits: cada um é um doc de 'days' (id 'AAAA-MM-DD', depois 'AAAA-MM-DD~2', '~3'…),
 // com `date`, `slot` e `kind` (normal | treino | jogo). Para as contas de uso, uma peça conta uma vez por dia.
 const KINDS = { normal: 'Normal', treino: 'Treino', jogo: 'Dia de jogo' };
@@ -1498,24 +1499,32 @@ function viewFits() {
 }
 
 // ---------- stats ----------
-function viewStats() {
-  const t = today(), since = periodStart();
+function viewStats() { // com filtro por tipo de outfit (normal, treino, dia de jogo)
+  S.wornKind = KINDS[S.statKind] ? S.statKind : null;
+  try { return viewStatsInner(); } finally { S.wornKind = null; }
+}
+function viewStatsInner() {
+  const t = today(), since = periodStart(), sk = S.wornKind;
   const days = worn().filter((d) => d.date >= since);
-  const P = S.pieces;
+  // as peças que fazem sentido em cada tipo: no treino, a roupa de treino (se houver); nos outros, tudo menos a de treino
+  const P = sk === 'treino' ? (S.pieces.some(isTreino) ? S.pieces.filter(isTreino) : S.pieces) : sk ? S.pieces.filter((p) => !isTreino(p)) : S.pieces;
+  const kLabel = sk === 'treino' ? 'de treino' : sk === 'jogo' ? 'de jogo' : sk ? 'normais' : '';
   let h = '<div class="head"><p class="eyebrow">Para usares a roupa toda</p><h1>Estatísticas</h1></div>';
   h += '<div class="chips" role="group" aria-label="Período">' + PERIODS.map((p) => '<button class="chip" data-period="' + p.id + '" aria-pressed="' + (S.period === p.id) + '">' + p.label + '</button>').join('') + '</div>';
-  if (!worn().length) return h + '<div class="empty">Ainda não há dias registados. Escolhe o fit de hoje ou envia a foto do dia.</div>';
+  h += '<div class="chips" role="group" aria-label="Tipo de outfit">' + [['all', 'Todos'], ['normal', 'Normal'], ['treino', 'Treino'], ['jogo', 'Jogo']].map(([k, l]) => '<button class="chip" data-statkind="' + k + '" aria-pressed="' + ((sk || 'all') === k) + '">' + l + '</button>').join('') + '</div>';
+  if (sk) h += '<p class="status" style="font-size:13px;margin:0">Só os outfits ' + kLabel + (sk === 'treino' && S.pieces.some(isTreino) ? ', com a tua roupa de treino' : sk ? ', sem a roupa de treino' : '') + '.</p>';
+  if (!worn().length) return h + '<div class="empty">' + (sk ? 'Ainda não tens outfits ' + kLabel + ' registados.' : 'Ainda não há dias registados. Escolhe o fit de hoje ou envia a foto do dia.') + '</div>';
 
   const counts = P.map((p) => ({ p, n: wearsOf(p.id, since).length, s: sinceLast(p) }));
   const usedN = counts.filter((c) => c.n > 0).length;
   const forgotten = counts.filter((c) => c.s === null || c.s >= 30);
   const ranked = counts.slice().sort((a, b) => b.n - a.n);
   const top = ranked[0] && (!ranked[1] || ranked[0].n > ranked[1].n) ? ranked[0] : null;
-  const rated = S.fits.filter((f) => typeof f.rating === 'number');
+  const rated = sk ? [...new Set(worn().map(dayFit).filter((f) => f && typeof f.rating === 'number'))] : S.fits.filter((f) => typeof f.rating === 'number');
   const avg = rated.length ? rated.reduce((s, f) => s + f.rating, 0) / rated.length : null;
 
   h += '<div class="kpis">'
-    + '<div class="kpi"><small>Dias registados</small><strong>' + nDates(days) + '</strong><span>' + periodLabel() + '</span></div>'
+    + '<div class="kpi"><small>' + (sk === 'treino' ? 'Dias de treino' : sk === 'jogo' ? 'Dias de jogo' : sk ? 'Dias normais' : 'Dias registados') + '</small><strong>' + nDates(days) + '</strong><span>' + periodLabel() + '</span></div>'
     + '<div class="kpi"><small>Armário usado</small><strong>' + (P.length ? Math.round(usedN / P.length * 100) : 0) + '%</strong><span>' + usedN + ' de ' + P.length + ' peças</span></div>'
     + '<div class="kpi"><small>Paradas há 30+ dias</small><strong>' + forgotten.length + '</strong><span>inclui nunca usadas</span></div>'
     + '<div class="kpi"><small>Avaliação média</small><strong>' + (avg == null ? '–' : num(avg.toFixed(1))) + '</strong><span>' + rated.length + ' fits avaliados</span></div>'
@@ -3168,6 +3177,7 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-with-pick')) { if (focusPieces().length) { S.withPieces = []; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
+  if (t.dataset.statkind) { S.statKind = t.dataset.statkind; render(); return; }
   if (t.dataset.period !== undefined) { S.period = Number(t.dataset.period); pref('period', S.period); render(); return; }
   if (t.dataset.view) { openViewer(t.dataset.view, t.dataset.viewAlt || '', t.dataset.viewKind || 'img'); return; }
   if (t.hasAttribute('data-vclose')) { closeViewer(); return; }
