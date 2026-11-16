@@ -1816,13 +1816,15 @@ function builderState() {
 
 function builderHtml() {
   const B = S.builder, st = builderState();
-  const groups = SUBS.map((s) => ({ s, ps: S.pieces.filter((p) => subOf(p) === s.id) })).filter((g) => g.ps.length);
+  const bk = KINDS[B.kind] ? B.kind : 'normal', creating = bCreating(B);
+  const groups = SUBS.map((s) => ({ s, ps: S.pieces.filter((p) => subOf(p) === s.id && (!creating || bAllowed(p, bk))).sort((a, b) => bk === 'jogo' ? isPorto(b) - isPorto(a) : 0) })).filter((g) => g.ps.length);
+  const baseFits = activeFits().filter((f) => !creating || kindOf(f) === bk);
   const hint = { outer: 'opcional · 1 no máximo', top: '1 por tipo · podes juntar t-shirt e camisola', bottom: 'obrigatório · só 1 (calças ou calções)', shoe: 'obrigatório · só 1', acc: 'opcional' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
     + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar este outfit' : B.editFit ? 'Editar fit' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
     + (B.editDay ? '' : B.editFit ? '<p class="note">Muda as peças ou as opções. Os dias em que já o usaste ficam como estavam.</p>' : B.baseTitle ? '<p class="note">A partir de um fit teu. Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
-      : activeFits().length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
-        + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
+      : baseFits.length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
+        + baseFits.map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
     + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
@@ -1847,9 +1849,25 @@ function editFitBuilder(id) { // change this fit itself: name, pieces and option
 }
 function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
   const f = S.fits.find((x) => x.id === id); if (!f) return;
-  S.open = null;
-  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), baseTitle: f.title || 'Fit' };
+  S.open = null; const byKind = S.builder && S.builder.byKind;
+  S.builder = { byKind, sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), baseTitle: f.title || 'Fit' };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
+}
+function bCreating(B) { return !!B && !B.editDay && !B.editFit; } // only when creating a fit are the pieces limited to its kind
+function bAllowed(p, kind) { // pieces a new fit of this kind can use: treino = roupa de treino (normal só numa vaga obrigatória sem nada de treino); normal e jogo = tudo menos a de treino
+  if (kind !== 'treino') return !isTreino(p);
+  const g = groupOf(p);
+  return isTreino(p) || (['top', 'bottom', 'shoe'].includes(g) && !S.pieces.some((q) => isTreino(q) && groupOf(q) === g));
+}
+function bSwitchKind(k) { // creating: changing the kind clears the fit; going back to a kind brings back what was picked there (same builder only)
+  const B = S.builder, cur = KINDS[B.kind] ? B.kind : 'normal';
+  if (bCreating(B) && k !== cur) {
+    B.byKind = B.byKind || {};
+    B.byKind[cur] = { sel: B.sel.slice(), closed: !!B.closed, opened: (B.opened || []).slice(), under: B.under || '', socks: B.socks || '' };
+    const m = B.byKind[k] || { sel: [], closed: false, opened: [], under: '', socks: '' };
+    Object.assign(B, { sel: m.sel.filter((id) => { const p = pieceById(id); return p && bAllowed(p, k); }), closed: m.closed, opened: m.opened.slice(), under: m.under, socks: m.socks });
+  }
+  B.kind = k;
 }
 function togglePick(id) {
   const p = pieceById(id); if (!p) return;
@@ -3381,7 +3399,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (t.dataset.kindPick) { S.kind = t.dataset.k; render(); return; }
-  if (t.dataset.bkind) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; S.builder.kind = t.dataset.k; renderSheet(); return; }
+  if (t.dataset.bkind) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; bSwitchKind(t.dataset.k); renderSheet(); return; }
   if (t.dataset.dayKind) { const d = dayById(t.dataset.dayKind); if (!d || !db) return; d.kind = t.dataset.k; render(); db.doc('days/' + d.id).update({ kind: t.dataset.k }).catch(() => {}); return; }
   if (t.hasAttribute('data-add-outfit')) { openPropose(true); return; }
   if (t.hasAttribute('data-prop-open')) { openPropose(false); return; }
