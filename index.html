@@ -1474,20 +1474,26 @@ function dayCard(d) {
   const ps = (d.pieces || []).map(pieceById).filter(Boolean);
   const f = dayFit(d);
   return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>' + esc(fmtDay(d.date)) + (kindOf(d) !== 'normal' ? ' <span class="badge kb-' + kindOf(d) + '">' + KINDS[kindOf(d)] + '</span>' : '') + '</h3><span class="eyebrow">' + esc(d.title || '') + '</span></div>'
+    + (kindOf(d) === 'jogo' ? (() => { const g = S.games.find((x) => x.date === d.date); return g ? '<p class="status" style="margin:0;font-size:13px">' + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : ''; })() : '')
     + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + '<div class="mini mini-col">' + ps.map((p) => '<button data-open="' + esc(p.id) + '" title="' + esc(p.name) + '" aria-label="Abrir ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div></div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
 
 function viewFits() {
   const list = activeFits().filter((f) => S.fitFilter === 'all' || (S.fitFilter === 'gosto' ? f.status === 'gosto' : KINDS[S.fitFilter] ? kindOf(f) === S.fitFilter : f.source === 'eu'));
-  const past = worn().sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1)).slice(0, 14);
+  const allPast = worn().sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1));
+  const hk = KINDS[S.histKind] ? S.histKind : 'all', past = allPast.filter((d) => hk === 'all' || kindOf(d) === hk), shownN = S.histN || 14;
   let h = '<div class="head"><p class="eyebrow">Propostas com o que tens no armário</p><h1>Fits</h1></div>' + topHtml();
   h += '<div class="chips" role="group" aria-label="Mostrar">'
     + [['all', 'Todos'], ['gosto', 'Guardados'], ['eu', 'Criados por mim'], ['treino', 'Treino'], ['jogo', 'Dia de jogo']].map(([k, l]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (S.fitFilter === k) + '">' + l + '</button>').join('') + '</div>';
   h += '<section class="stack" aria-label="Propostas">';
   h += list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (S.fitFilter === 'all' ? 'Sem propostas. Cria os teus com «Criar o meu fit».' : 'Nada aqui ainda.') + '</div>';
-  h += '</section><section class="stack" aria-labelledby="past-h"><h2 id="past-h">O que usaste</h2>';
-  h += past.length ? past.map(dayCard).join('') : '<div class="empty">Nada registado ainda.</div>';
+  // histórico: todos os outfits usados, com filtro por tipo (normal, treino, jogo)
+  const cnt = (k) => allPast.filter((d) => k === 'all' || kindOf(d) === k).length;
+  h += '</section><section class="stack" aria-labelledby="past-h"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="past-h">O que usaste</h2><span class="eyebrow">' + past.length + (past.length === 1 ? ' outfit' : ' outfits') + (past.length ? ' · ' + nDates(past) + (nDates(past) === 1 ? ' dia' : ' dias') : '') + '</span></div>'
+    + '<div class="chips" role="group" aria-label="Histórico por tipo">' + [['all', 'Todos']].concat(Object.entries(KINDS)).map(([k, l]) => '<button class="chip" data-histkind="' + k + '" aria-pressed="' + (hk === k) + '">' + l + ' · ' + cnt(k) + '</button>').join('') + '</div>';
+  h += past.length ? past.slice(0, shownN).map(dayCard).join('') : '<div class="empty">' + (hk === 'all' ? 'Nada registado ainda.' : 'Ainda não tens outfits ' + (hk === 'treino' ? 'de treino' : hk === 'jogo' ? 'de dia de jogo' : 'normais') + ' registados.') + '</div>';
+  if (past.length > shownN) h += '<button class="btn" data-hist-more>Mostrar mais (' + (past.length - shownN) + ')</button>';
   return h + '</section>';
 }
 
@@ -3229,6 +3235,8 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (t.dataset.fitfilter) { S.fitFilter = t.dataset.fitfilter; render(); return; }
+  if (t.dataset.histkind) { S.histKind = t.dataset.histkind; S.histN = 14; render(); return; }
+  if (t.hasAttribute('data-hist-more')) { S.histN = (S.histN || 14) + 20; render(); return; }
   if (t.dataset.fitUse) { useFit(t.dataset.fitUse); return; }
   if (t.dataset.fitLike) { const f = S.fits.find((x) => x.id === t.dataset.fitLike); setFitStatus(t.dataset.fitLike, f && f.status === 'gosto' ? 'proposta' : 'gosto'); return; }
   if (t.dataset.fitNo) { setFitStatus(t.dataset.fitNo, 'rejeitada'); return; }
