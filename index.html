@@ -810,6 +810,7 @@ const ICONS = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>',
   ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.6 2.6-1.4 4.2H9.8l-1.4-4.2z"/><path d="M12 7.5V3.2M15.6 10.1l4.2-1.4M14.2 14.3l2.6 3.6M9.8 14.3l-2.6 3.6M8.4 10.1L4.2 8.7"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   dumbbell: '<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>',
   shirt: '<path d="M9 4l-5 2.5 1.8 4.2L8 10v10h8V10l2.2.7L20 6.5 15 4c-.4 1.7-1.6 2.6-3 2.6S9.4 5.7 9 4z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
@@ -859,6 +860,7 @@ const worn = () => S.days.filter((d) => d.worn && (!S.wornKind || kindOf(d) === 
 // com `date`, `slot` e `kind` (normal | treino | jogo). Para as contas de uso, uma peça conta uma vez por dia.
 const KINDS = { normal: 'Normal', treino: 'Treino', jogo: 'Dia de jogo' };
 const kindOf = (o) => (o && KINDS[o.kind] ? o.kind : 'normal');
+const rateTxt = (f) => f && typeof f.rating === 'number' ? '★ ' + String(f.rating).replace('.', ',') : '';
 const byDate = (list) => { const m = new Map(); list.forEach((d) => { if (!m.has(d.date)) m.set(d.date, d); }); return [...m.values()]; };
 const nDates = (list) => new Set(list.map((d) => d.date)).size;
 const outfitsOn = (date) => S.days.filter((d) => d.date === date && d.worn).sort((a, b) => (a.slot || 1) - (b.slot || 1) || String(a.chosenAt || '').localeCompare(String(b.chosenAt || '')));
@@ -869,9 +871,17 @@ const TAG_FCP = 'FC Porto', TAG_TREINO = 'Treino';
 const hasTag = (p, t) => !!p && (p.tags || []).some((x) => String(x).toLowerCase() === t.toLowerCase());
 const isPorto = (p) => hasTag(p, TAG_FCP), isTreino = (p) => hasTag(p, TAG_TREINO);
 // a que «armário» pertence cada peça: Normal, Treino ou FC Porto (guardado nas tags, uma de cada vez)
-const BELONG = { normal: 'Normal', treino: 'Treino', porto: 'FC Porto' }, BELONG_IC = { normal: 'shirt', treino: 'dumbbell', porto: 'ball' };
-const belongOf = (p) => isPorto(p) ? 'porto' : isTreino(p) ? 'treino' : 'normal';
-const belongTags = (p, b) => (p.tags || []).filter((x) => !/^(fc porto|treino)$/i.test(String(x))).concat(b === 'porto' ? [TAG_FCP] : b === 'treino' ? [TAG_TREINO] : []);
+// cada peça pode pertencer a vários: Casual, Treino e/ou FC Porto (tags «Casual», «Treino», «FC Porto»; sem nenhuma = só casual)
+const TAG_CASUAL = 'Casual', BELONG_RE = /^(fc porto|treino|casual)$/i;
+const BELONG = { normal: 'Casual', treino: 'Treino', porto: 'FC Porto' }, BELONG_IC = { normal: 'shirt', treino: 'dumbbell', porto: 'ball' };
+const isCasual = (p) => hasTag(p, TAG_CASUAL) || (!isPorto(p) && !isTreino(p));
+const inBelong = (p, b) => b === 'porto' ? isPorto(p) : b === 'treino' ? isTreino(p) : isCasual(p);
+const belongsOf = (p) => Object.keys(BELONG).filter((b) => inBelong(p, b));
+function belongTags(p, set) { // set = lista de grupos; só casual não precisa de tag
+  const rest = (p.tags || []).filter((x) => !BELONG_RE.test(String(x)));
+  const only = set.length === 1 && set[0] === 'normal';
+  return rest.concat(set.includes('porto') ? [TAG_FCP] : [], set.includes('treino') ? [TAG_TREINO] : [], set.includes('normal') && !only ? [TAG_CASUAL] : []);
+}
 const periodStart = () => S.period ? addDays(today(), -(S.period - 1)) : '0000-00-00';
 const wearsOf = (id, since) => byDate(worn().filter((d) => (d.pieces || []).includes(id) && (!since || d.date >= since)));
 const lastWorn = (id) => { const w = wearsOf(id).map((d) => d.date).sort(); return w.length ? w[w.length - 1] : null; };
@@ -962,8 +972,9 @@ function kindSeg(attr, id, cur, label) {
 }
 function outfitCard(plan, i, n) {
   const f = dayFit(plan), id = plan.id, kind = kindOf(plan), ps = (plan.pieces || []).map(pieceById).filter(Boolean), opts = S.optOpen === id;
-  let h = '<section class="card outfit" aria-label="' + esc(plan.title || 'Fit de hoje') + '">'
-    + '<div class="sec"><h2>' + I(KIND_IC[kind], 20) + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(plan.title || 'Fit de hoje') + '</span></h2>'
+  const lbl = kind === 'treino' ? 'Treino de hoje' : kind === 'jogo' ? 'Jogo de hoje' : 'Fit de hoje';
+  let h = '<section class="card outfit" aria-label="' + lbl + '">'
+    + '<div class="sec"><h2>' + I(KIND_IC[kind], 20) + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + lbl + '</span></h2>'
     + '<span class="acts"><button class="ibtn" data-edit-day="' + esc(id) + '" aria-label="Editar este outfit" title="Editar">' + I('edit') + '</button><button class="ibtn" data-del-day="' + esc(id) + '" aria-label="Tirar este outfit de hoje" title="Tirar de hoje">' + I('x') + '</button></span></div>'
     + (n > 1 ? '<p class="meta-line" style="margin-top:-8px">Outfit ' + (i + 1) + ' de ' + n + '</p>' : '')
     + kindSeg('day-kind', id, kind);
@@ -1052,16 +1063,16 @@ async function testPush() {
 }
 
 function viewCloset() {
-  const cg = BELONG[S.cgroup] ? S.cgroup : 'all', inG = (p) => cg === 'all' || belongOf(p) === cg;
+  const cg = BELONG[S.cgroup] ? S.cgroup : 'all', inG = (p) => cg === 'all' || inBelong(p, cg);
   if (String(S.filter).startsWith('tag:')) S.filter = 'all';
   const pool = S.pieces.filter(inG);
   const present = SUBS.filter((s) => pool.some((p) => subOf(p) === s.id));
   if (S.filter !== 'all' && !present.some((c) => c.id === S.filter)) S.filter = 'all';
   const tagF = cg === 'all' ? null : inG;
   const shown = present.filter((c) => S.filter === 'all' || c.id === S.filter);
-  const nG = (g) => S.pieces.filter((p) => belongOf(p) === g).length;
+  const nG = (g) => S.pieces.filter((p) => inBelong(p, g)).length;
   let h = '<div class="top"><div class="head"><p class="eyebrow">' + (cg === 'all' ? S.pieces.length + ' peças' : pool.length + ' de ' + S.pieces.length + ' peças') + '</p><h1>Armário</h1></div><button class="ibtn" data-new-piece aria-label="Nova peça" title="Nova peça">' + I('plus', 20) + '</button></div>';
-  h += '<div class="seg kseg" role="group" aria-label="Que roupa mostrar">' + [['all', 'Tudo', '']].concat(Object.keys(BELONG).map((k) => [k, k === 'porto' ? 'Porto' : BELONG[k], BELONG_IC[k]])).map(([k, l, ic]) => '<button data-cgroup="' + k + '" aria-pressed="' + (cg === k) + '" title="' + (k === 'all' ? 'Tudo' : BELONG[k]) + '" aria-label="' + (k === 'all' ? 'Tudo' : BELONG[k]) + ' (' + (k === 'all' ? S.pieces.length : nG(k)) + ')">' + (ic ? I(ic, 19) : '<span>' + l + '</span>') + '<small style="opacity:.6">' + (k === 'all' ? S.pieces.length : nG(k)) + '</small></button>').join('') + '</div>';
+  h += '<div class="seg kseg" role="group" aria-label="Que roupa mostrar">' + [['all', 'Tudo', '']].concat(Object.keys(BELONG).map((k) => [k, BELONG[k], BELONG_IC[k]])).map(([k, l, ic]) => '<button data-cgroup="' + k + '" aria-pressed="' + (cg === k) + '" title="' + (k === 'all' ? 'Tudo' : BELONG[k]) + '" aria-label="' + (k === 'all' ? 'Tudo' : BELONG[k]) + ' (' + (k === 'all' ? S.pieces.length : nG(k)) + ')">' + (ic ? I(ic, 19) : '<span>' + l + '</span>') + '<small style="opacity:.6">' + (k === 'all' ? S.pieces.length : nG(k)) + '</small></button>').join('') + '</div>';
   h += '<div class="chips" role="group" aria-label="Filtrar por categoria"><button class="chip" data-filter="all" aria-pressed="' + (S.filter === 'all') + '">Todas</button>' + present.map((c) => '<button class="chip" data-filter="' + c.id + '" aria-pressed="' + (S.filter === c.id) + '">' + c.label + '</button>').join('') + '</div>';
   h += '<div class="toolbar"><label for="sort">' + I('sliders', 16) + '<select id="sort" aria-label="Ordenar em cada categoria">' + SORTS.map((s) => '<option value="' + s.id + '"' + (S.sort === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></label></div>';
   if (!shown.length) return h + '<div class="empty">' + (!S.pieces.length ? 'O armário está vazio. Envia a primeira foto no separador Hoje.' : cg === 'porto' ? 'Ainda não marcaste nenhuma peça como «FC Porto». Abre uma peça e, em «Pertence a», toca na bola.' : cg === 'treino' ? 'Ainda não marcaste nenhuma peça como «Treino». Abre uma peça e, em «Pertence a», toca no halteres.' : 'Nada nesta categoria ainda.') + '</div>';
@@ -1382,22 +1393,25 @@ function proposals() {
   const key = [minIdx, kind, game ? game.time : '', focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.tags || []).join() + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.id + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
   // tipo de outfit: a roupa de treino só entra nos de treino; nos de jogo, a do Porto ocupa a sua vaga sempre que exista
-  const base = S.pieces.filter((p) => kind === 'treino' || !isTreino(p)), want = kind === 'treino' ? isTreino : kind === 'jogo' ? isPorto : null;
+  // casual: só o que é casual · treino: roupa de treino (e casual para o que faltar) · jogo: SÓ o que tem a bola (mais exceções escolhidas à mão)
+  const fIds = new Set(focus.map((p) => p.id));
+  const base = S.pieces.filter((p) => kind === 'treino' ? isTreino(p) || isCasual(p) : kind === 'jogo' ? isPorto(p) || fIds.has(p.id) : isCasual(p) || fIds.has(p.id)), want = kind === 'treino' ? isTreino : kind === 'jogo' ? isPorto : null;
   const res0 = { wx, list: [], kind };
   if (kind === 'treino' && !S.pieces.some(isTreino)) { res0.empty = 'treino'; propCache = { key, res: res0 }; return res0; }
+  if (kind === 'jogo') {
+    const has = (test) => base.some(test), miss = [!has((p) => ['tee', 'shirt', 'sweater'].includes(subOf(p))) && 'parte de cima', !has((p) => groupOf(p) === 'bottom') && 'calças ou calções', !has((p) => subOf(p) === 'shoe') && 'calçado'].filter(Boolean);
+    if (miss.length) { res0.empty = 'jogo'; res0.missing = miss; propCache = { key, res: res0 }; return res0; }
+  }
   const slot = (list) => { if (!want) return list; const m = list.filter(want); return m.length ? m : list; };
   const by = (sub) => base.filter((p) => subOf(p) === sub);
   // num treino as camadas de cima são só de treino (sem casaco nem camisola «normais» por cima); só se não houver
   // nenhuma parte de cima de treino é que se vai buscar uma ao armário normal
   const trTop = kind === 'treino' && base.some((p) => isTreino(p) && ['tee', 'shirt', 'sweater'].includes(subOf(p)));
-  // num jogo vai-se todo do Porto: partes de cima e casaco só do Porto (se já houver alguma registada); só as calças
-  // (e o calçado, se não houver do Porto) vêm do armário normal. Uma peça escolhida à mão é uma exceção e entra sempre.
-  const isJogo = kind === 'jogo', fIds = new Set(focus.map((p) => p.id)), portoOk = (p) => isPorto(p) || fIds.has(p.id);
-  const jTop = isJogo && base.some((p) => isPorto(p) && ['tee', 'shirt', 'sweater'].includes(subOf(p)));
-  const topBy = (sub) => trTop ? by(sub).filter(isTreino) : jTop ? by(sub).filter(portoOk) : by(sub);
-  const outers = kind === 'treino' ? by('outer').filter(isTreino) : isJogo && by('outer').some(isPorto) ? by('outer').filter(portoOk) : slot(by('outer'));
+  const isJogo = kind === 'jogo';
+  const topBy = (sub) => trTop ? by(sub).filter(isTreino) : by(sub);
+  const outers = kind === 'treino' ? by('outer').filter(isTreino) : slot(by('outer'));
   const tees = topBy('tee'), shirts = topBy('shirt'), sweaters = topBy('sweater'), shoes = fShoe ? [fShoe] : slot(by('shoe'));
-  const bottoms = fBottom ? [fBottom] : isJogo ? base.filter((p) => groupOf(p) === 'bottom') : slot(base.filter((p) => groupOf(p) === 'bottom'));
+  const bottoms = fBottom ? [fBottom] : slot(base.filter((p) => groupOf(p) === 'bottom'));
   // num jogo à noite veste-se para a noite, não para a tarde
   let T = wx.feel; if (game && hourOf(game) >= 18) T = Math.min(T, wx.w ? Math.round((wx.w.amin + 2) * 10) / 10 : T - 4);
   const target = Math.max(0.6, Math.min(10, 1 + (27 - T) * 0.42 + (wx.wind >= 30 ? 0.5 : 0)));
@@ -1494,7 +1508,7 @@ function proposals() {
 }
 function propCard(x, i) {
   const ps = x.ids.map(pieceById).filter(Boolean);
-  return '<article class="card" aria-label="' + esc(x.label) + '"><div class="sec"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + (x.known.status === 'gosto' ? I('heart', 13) : '') + esc(x.known.title || 'Já nos teus fits') + '</span>' : '') + '</div>'
+  return '<article class="card" aria-label="' + esc(x.label) + '"><div class="sec"><h2><span class="rank">' + (i + 1) + '</span>' + esc(x.label) + '</h2>' + (x.known ? '<span class="badge' + (x.known.status === 'gosto' ? ' ok' : '') + '">' + (x.known.status === 'gosto' ? I('heart', 13) : '') + (x.known.status === 'gosto' ? 'Guardado' : 'Já nos teus fits') + (rateTxt(x.known) ? ' · ' + rateTxt(x.known) : '') + '</span>' : '') + '</div>'
     + '<div class="fitview">' + dressedHtml(x.ids, 150, false, []) + miniCol(ps) + '</div>'
     + styleHtml('p:' + x.key, x.style)
     + '<div class="tags">' + x.notes.map((n) => '<span>' + esc(n) + '</span>').join('') + '</div>'
@@ -1520,15 +1534,15 @@ function viewPropose() {
     h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
   }
   h += '</section>';
-  let list = R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e, em «Pertence a», toca no halteres.</div>'
+  let list = R.empty === 'jogo' ? '<div class="empty">' + I('ball', 26) + 'Para propor um fit de jogo falta-te roupa do Porto: ' + esc(R.missing.join(', ')) + '.<br>Abre as peças que levas ao jogo e, em «Pertence a», toca na bola. Também podes criar o fit à mão com ＋.</div>'
+    : R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e, em «Pertence a», toca no halteres.</div>'
     : R.list.length ? R.list.map(propCard).join('')
     : mi ? '<div class="empty">Nenhuma combinação chega a ' + mi + ' de índice de estilo' + (fo ? ' com ' + esc(focusLabel(focus)) : '') + '. Baixa o mínimo em «Afinar».</div>'
     : fo ? '<div class="empty">Não encontrei combinações com ' + esc(focusLabel(focus)) + '. Pode faltar uma parte de cima, umas calças ou um calçado, ou já saltaste todas hoje.</div>'
     : '<div class="empty">Para propor fits preciso de, pelo menos, uma parte de cima, umas calças ou calções e um calçado.</div>';
   if (S.kind === 'jogo') {
     const nP = S.pieces.filter(isPorto).length;
-    list = '<div class="fcpz"><span class="pill">' + I('ball', 15) + (nP ? 'Dia de jogo · tudo do Porto menos as calças' : 'Dia de jogo · azul e branco') + '</span>'
-      + (nP ? '' : '<span class="pill" style="font-weight:500">Marca a tua roupa do Porto: Armário › peça › «FC Porto»</span>') + list + '</div>';
+    list = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Dia de jogo · só roupa do Porto</span>' + list + '</div>';
   }
   return h + '<section class="stack" aria-label="Propostas">' + list + '</section>' + buildBtn();
 }
@@ -1548,7 +1562,7 @@ function rateHtml(f) {
   const r = typeof f.rating === 'number' ? f.rating : null;
   const id = esc(f.id);
   return '<div class="rate"><span class="eyebrow">A tua avaliação · toca nas estrelas</span><div class="rate-top">'
-    + '<button class="starbar" data-starbar="' + id + '" aria-label="Avaliar ' + esc(f.title) + ': toca na posição das estrelas">' + starHtml(r).replace('class="stars"', 'class="stars big"') + '</button>'
+    + '<button class="starbar" data-starbar="' + id + '" aria-label="Avaliar este fit: toca na posição das estrelas">' + starHtml(r).replace('class="stars"', 'class="stars big"') + '</button>'
     + '<b>' + (r == null ? '–' : num(r)) + '</b>'
     + '<span class="rstep"><button data-rstep="-0.25" data-rid="' + id + '" aria-label="Menos 0,25">−</button><button data-rstep="0.25" data-rid="' + id + '" aria-label="Mais 0,25">+</button></span></div></div>';
 }
@@ -1562,7 +1576,8 @@ function fitCard(f, compact) {
   const ps = (f.pieces || []).map(pieceById).filter(Boolean);
   const usedToday = outfitsOn(today()).some((d) => dayFit(d) === f);
   const saved = f.status === 'gosto', k = kindOf(f), fid = esc(f.id);
-  let h = '<article class="card" aria-label="' + esc(f.title) + '"><div class="sec"><h2>' + (k !== 'normal' ? I(KIND_IC[k], 18) : '') + '<span style="min-width:0">' + esc(f.title) + '</span></h2>'
+  const nUsed = fitDays(f).length;
+  let h = '<article class="card" aria-label="Fit"><div class="sec"><h2>' + I(KIND_IC[k], 18) + '<span style="min-width:0">' + (rateTxt(f) || 'Por avaliar') + '</span>' + (nUsed ? '<span class="eyebrow" style="font-weight:500">· usado ' + nUsed + '×</span>' : '') + '</h2>'
     + (f.source === 'eu' ? '<span class="badge" title="Criado por mim">' + I('edit', 13) + '</span>' : '') + '</div>';
   h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened) + miniCol(ps) + '</div>';
@@ -1593,12 +1608,23 @@ function activeFits() {
 function dayCard(d) {
   const ps = (d.pieces || []).map(pieceById).filter(Boolean), f = dayFit(d), k = kindOf(d);
   const g = k === 'jogo' ? S.games.find((x) => x.date === d.date) : null;
-  return '<div class="card"><div class="sec"><h3>' + I(KIND_IC[k], 17) + esc(fmtDay(d.date)) + '</h3><span class="eyebrow" style="max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.title || '') + '</span></div>'
+  return '<div class="card"><div class="sec"><h3>' + I(KIND_IC[k], 17) + esc(fmtDay(d.date)) + '</h3></div>'
     + (g ? '<p class="meta-line">' + I('ball', 15) + esc(gameVs(g) + (g.competition ? ' · ' + g.competition : '')) + '</p>' : '')
     + '<div class="fitview">' + dressedHtml(uids(d), 120, d.closed, d.opened) + miniCol(ps) + '</div>'
     + (f && typeof f.rating === 'number' ? '<div class="rate-top">' + starHtml(f.rating) + '<b>' + num(f.rating) + '</b></div>' : '') + '</div>';
 }
 
+// procurar fits por peça: escolho uma ou mais peças e vejo os fits (ou os dias) que as têm todas, os mais bem avaliados primeiro
+function fitPieceRow(lists) {
+  const sel = (S.fitPieces || []).filter((id) => pieceById(id));
+  const used = new Set(lists.flatMap((o) => o.pieces || []));
+  const ps = S.pieces.filter((p) => used.has(p.id) || sel.includes(p.id)).sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
+  if (!ps.length) return '';
+  return '<section class="card tight" style="gap:8px"><p class="status" style="font-size:13px;margin:0;display:flex;gap:6px;align-items:center">' + I('search', 15) + '<span>' + (sel.length ? 'Com ' + esc(sel.map((id) => '«' + pieceById(id).name + '»').join(' e ')) : 'Procurar por peça') + '</span></p>'
+    + '<div class="withrow" role="group" aria-label="Procurar fits por peça">' + ps.map((p) => '<button data-fitpiece="' + esc(p.id) + '" aria-pressed="' + sel.includes(p.id) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
+    + (sel.length ? '<button class="chip" data-fitpiece-clear style="align-self:flex-start">' + I('x', 14) + 'Todas as peças</button>' : '') + '</section>';
+}
+const hasAll = (o) => (S.fitPieces || []).filter((id) => pieceById(id)).every((id) => (o.pieces || []).includes(id));
 function viewFits() {
   const hist = S.fitsView === 'hist';
   let h = '<div class="top"><div class="head"><p class="eyebrow">' + activeFits().length + ' fits</p><h1>Fits</h1></div><button class="ibtn" data-build aria-label="Criar o meu fit" title="Criar o meu fit">' + I('plus', 20) + '</button></div>'
@@ -1606,15 +1632,19 @@ function viewFits() {
     + '<div class="seg" role="group" aria-label="Ver"><button data-fitsview="fits" aria-pressed="' + !hist + '">' + I('star', 16) + 'Os meus fits</button><button data-fitsview="hist" aria-pressed="' + hist + '">' + I('history', 16) + 'Histórico</button></div>';
   if (!hist) {
     const ff = S.fitFilter;
-    const list = activeFits().filter((f) => ff === 'all' || (ff === 'gosto' ? f.status === 'gosto' : KINDS[ff] ? kindOf(f) === ff : f.source === 'eu'));
+    const bySel = (S.fitPieces || []).length > 0;
+    const list = activeFits().filter((f) => (ff === 'all' || (ff === 'gosto' ? f.status === 'gosto' : KINDS[ff] ? kindOf(f) === ff : f.source === 'eu')) && hasAll(f))
+      .sort((a, b) => bySel ? (b.rating ?? -1) - (a.rating ?? -1) || fitDays(b).length - fitDays(a).length : 0);
+    h += fitPieceRow(activeFits());
     h += '<div class="chips" role="group" aria-label="Mostrar">'
       + [['all', 'Todos', ''], ['gosto', 'Guardados', 'heart'], ['eu', 'Meus', 'edit'], ['treino', 'Treino', 'dumbbell'], ['jogo', 'Jogo', 'ball']].map(([k, l, ic]) => '<button class="chip" data-fitfilter="' + k + '" aria-pressed="' + (ff === k) + '">' + (ic ? I(ic, 15) : '') + l + '</button>').join('') + '</div>';
-    let body = list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (ff === 'all' ? 'Sem fits. Cria os teus com ＋ ou pede propostas.' : 'Nada aqui ainda.') + '</div>';
+    let body = list.length ? list.map((f) => fitCard(f)).join('') : '<div class="empty">' + (bySel ? 'Nenhum fit com estas peças.' : ff === 'all' ? 'Sem fits. Cria os teus com ＋ ou pede propostas.' : 'Nada aqui ainda.') + '</div>';
     if (ff === 'jogo') body = '<div class="fcpz"><span class="pill">' + I('ball', 15) + 'Fits de jogo</span>' + body + '</div>';
     return h + '<section class="stack" aria-label="Fits">' + body + '</section>';
   }
   // histórico: todos os outfits usados, com filtro por tipo (normal, treino, jogo)
-  const allPast = worn().sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1));
+  h += fitPieceRow(worn());
+  const allPast = worn().filter(hasAll).sort((a, b) => b.date.localeCompare(a.date) || (b.slot || 1) - (a.slot || 1));
   const hk = KINDS[S.histKind] ? S.histKind : 'all', past = allPast.filter((d) => hk === 'all' || kindOf(d) === hk), shownN = S.histN || 14;
   const cnt = (k) => allPast.filter((d) => k === 'all' || kindOf(d) === k).length;
   h += '<div class="chips" role="group" aria-label="Histórico por tipo">' + [['all', 'Todos']].concat(Object.keys(KINDS).map((k) => [k, KIND_SHORT[k]])).map(([k, l]) => '<button class="chip" data-histkind="' + k + '" aria-pressed="' + (hk === k) + '">' + (KIND_IC[k] ? I(KIND_IC[k], 15) : '') + l + ' <span style="opacity:.6">' + cnt(k) + '</span></button>').join('') + '</div>'
@@ -1635,12 +1665,12 @@ function viewStatsInner() {
   const t = today(), since = periodStart(), sk = S.wornKind;
   const days = worn().filter((d) => d.date >= since);
   // as peças que fazem sentido em cada tipo: no treino, a roupa de treino (se houver); nos outros, tudo menos a de treino
-  const P = sk === 'treino' ? (S.pieces.some(isTreino) ? S.pieces.filter(isTreino) : S.pieces) : sk ? S.pieces.filter((p) => !isTreino(p)) : S.pieces;
+  const P = sk === 'treino' ? (S.pieces.some(isTreino) ? S.pieces.filter(isTreino) : S.pieces) : sk === 'jogo' ? (S.pieces.some(isPorto) ? S.pieces.filter(isPorto) : S.pieces) : sk ? S.pieces.filter(isCasual) : S.pieces;
   const kLabel = sk === 'treino' ? 'de treino' : sk === 'jogo' ? 'de jogo' : sk ? 'normais' : '';
   let h = '<div class="head"><p class="eyebrow">Para usares a roupa toda</p><h1>Estatísticas</h1></div>';
   h += '<div class="chips" role="group" aria-label="Período">' + I('calendar', 18).replace('class="i"', 'class="i" style="align-self:center;color:var(--muted)"') + PERIODS.map((p) => '<button class="chip" data-period="' + p.id + '" aria-pressed="' + (S.period === p.id) + '">' + p.label + '</button>').join('') + '</div>';
   h += '<div class="seg kseg" role="group" aria-label="Tipo de outfit">' + [['all', 'Todos']].concat(Object.keys(KINDS).map((k) => [k, KIND_SHORT[k]])).map(([k, l]) => '<button data-statkind="' + k + '" aria-pressed="' + ((sk || 'all') === k) + '">' + (KIND_IC[k] ? I(KIND_IC[k], 16) : '') + '<span>' + l + '</span></button>').join('') + '</div>';
-  if (sk) h += '<p class="meta-line">' + I('tag', 15) + 'Só os outfits ' + kLabel + (sk === 'treino' && S.pieces.some(isTreino) ? ', com a tua roupa de treino' : ', sem a roupa de treino') + '</p>';
+  if (sk) h += '<p class="meta-line">' + I('tag', 15) + 'Só os outfits ' + kLabel + (sk === 'treino' && S.pieces.some(isTreino) ? ', com a tua roupa de treino' : sk === 'jogo' && S.pieces.some(isPorto) ? ', com a tua roupa do Porto' : sk === 'normal' ? ', com a tua roupa casual' : '') + '</p>';
   h += '<!--fcpz-->';
   if (!worn().length) return h + '<div class="empty">' + (sk ? 'Ainda não tens outfits ' + kLabel + ' registados.' : 'Ainda não há dias registados. Escolhe o fit de hoje ou envia a foto do dia.') + '</div>';
 
@@ -1679,7 +1709,7 @@ function viewStatsInner() {
 
   // calendário (últimas 12 semanas)
   const weeks = 12, end = parse(t); const start = new Date(end); start.setDate(start.getDate() - end.getDay() - (weeks - 1) * 7);
-  const wornSet = new Map(worn().map((d) => [d.date, d.title || 'Fit']));
+  const wornSet = new Map(worn().map((d) => [d.date, KINDS[kindOf(d)]]));
   let cells = '', monthsLab = [], lastM = -1;
   for (let w = 0; w < weeks; w++) {
     for (let d = 0; d < 7; d++) {
@@ -1728,7 +1758,7 @@ function viewStatsInner() {
   const best = rated.slice().sort((a, b) => b.rating - a.rating).slice(0, 3);
   if (best.length) {
     h += '<section class="card" aria-labelledby="st-best"><h2 id="st-best">Fits mais bem avaliados</h2><div class="stack">'
-      + best.map((f) => '<div class="pair"><span class="mini">' + (f.pieces || []).map(pieceById).filter(Boolean).slice(0, 4).map((p) => '<span><img src="' + pieceSrc(p) + '" alt=""></span>').join('') + '</span><span style="display:flex;flex-direction:column;gap:2px;margin-left:auto;align-items:flex-end"><span>' + esc(f.title) + '</span>' + starHtml(f.rating) + '</span></div>').join('')
+      + best.map((f) => '<div class="pair"><span class="mini">' + (f.pieces || []).map(pieceById).filter(Boolean).slice(0, 4).map((p) => '<span><img src="' + pieceSrc(p) + '" alt=""></span>').join('') + '</span><span style="display:flex;flex-direction:column;gap:2px;margin-left:auto;align-items:flex-end">' + starHtml(f.rating) + '</span></div>').join('')
       + '</div></section>';
   }
   return h;
@@ -1748,9 +1778,9 @@ function pieceSheet(p) {
     + '<div class="sheet-head"><span class="badge">' + esc(subInfo(subOf(p)).label) + '</span>' + closeBtn() + '</div>'
     + '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>'
     + '<div style="display:flex;align-items:center;gap:10px"><span class="swatch" style="background:' + esc(p.color || '#999') + '"></span><h2 id="sh-h">' + esc(p.name) + '</h2></div>'
-    + '<div class="tags">' + (p.tags || []).filter((x) => !/^(fc porto|treino)$/i.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
-    + '<h3 style="margin-bottom:-4px">Pertence a</h3><div class="seg kseg" role="group" aria-label="A que roupa pertence" style="flex:none">' + Object.keys(BELONG).map((k) => '<button data-pbelong="' + k + '" aria-pressed="' + (belongOf(p) === k) + '" title="' + BELONG[k] + '" aria-label="' + BELONG[k] + '">' + I(BELONG_IC[k], 20) + '</button>').join('') + '</div>'
-    + '<p class="status" style="font-size:12px;margin:-6px 0 0">' + { normal: 'Roupa do dia a dia. Nos dias de jogo só as calças e o calçado vêm daqui (a não ser que escolhas uma exceção).', treino: 'Só aparece nas propostas de treino.', porto: 'Entra nos fits dos dias de jogo. Nesses dias, tudo o que não são calças vem da roupa do Porto.' }[belongOf(p)] + '</p>'
+    + '<div class="tags">' + (p.tags || []).filter((x) => !BELONG_RE.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
+    + '<h3 style="margin-bottom:-4px">Pertence a</h3><div class="seg kseg" role="group" aria-label="A que roupa pertence" style="flex:none">' + Object.keys(BELONG).map((k) => '<button data-pbelong="' + k + '" aria-pressed="' + inBelong(p, k) + '" title="' + BELONG[k] + '" aria-label="' + BELONG[k] + '">' + I(BELONG_IC[k], 20) + '</button>').join('') + '</div>'
+    + '<p class="status" style="font-size:12px;margin:-6px 0 0">' + belongsOf(p).map((k) => BELONG[k]).join(' + ') + '. Podes escolher mais do que um. Nos dias de jogo só entra o que tiver a bola.</p>'
     + '<h3>Uso</h3><div class="kv">'
     + '<div><small>Última vez</small><strong>' + (lw ? esc(ago(diffDays(lw, t))) : 'Nunca') + '</strong>' + (lw ? '<small>' + esc(fmtDay(lw)) + '</small>' : '') + '</div>'
     + '<div><small>Total</small><strong>' + all.length + '×</strong><small>em ' + ownDays + ' dias no armário</small></div>'
@@ -1760,6 +1790,7 @@ function pieceSheet(p) {
     + '<div><small>Últimos 12 meses</small><strong>' + inPeriod(365) + '×</strong></div>'
     + '</div>'
     + (groupOf(p) !== 'acc' && !p.removed ? '<button class="btn primary" data-with="' + esc(p.id) + '" data-with-go="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/></svg>Propor fits com esta peça</button>' : '')
+    + (S.fits.some((f) => (f.pieces || []).includes(p.id)) || S.days.some((d) => d.worn && (d.pieces || []).includes(p.id)) ? '<button class="btn" data-fits-of="' + esc(p.id) + '">' + I('search') + 'Ver fits com esta peça</button>' : '')
     + pieceSetHtml(p)
     + (topPartners.length ? '<h3>Usada mais vezes com</h3><div class="pairs">' + topPartners.map(([id, n]) => { const q = pieceById(id); return '<button class="pair" data-open="' + esc(id) + '" style="border:none;background:none;padding:0;text-align:left"><span class="mini"><span><img src="' + pieceSrc(q) + '" alt=""></span></span><span>' + esc(q.name) + '</span><b>' + n + '×</b></button>'; }).join('') + '</div>' : '')
     + (p.photo ? '<button class="orig" data-view="' + esc(p.photo) + '" data-view-alt="Foto original de ' + esc(p.name) + '" style="background:none;text-align:left;width:100%"><img src="' + blob(p.photo) + '" alt="Foto original de ' + esc(p.name) + '"><div><h3>Foto original</h3><p class="status">' + esc(p.source || '') + ' · toca para ver em grande</p></div></button>' : '')
@@ -1789,9 +1820,9 @@ function builderHtml() {
   const hint = { outer: 'opcional · 1 no máximo', top: '1 por tipo · podes juntar t-shirt e camisola', bottom: 'obrigatório · só 1 (calças ou calções)', shoe: 'obrigatório · só 1', acc: 'opcional' };
   let h = '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="bd-h">'
     + '<div class="sheet-head"><h2 id="bd-h">' + (B.editDay ? 'Editar este outfit' : B.editFit ? 'Editar fit' : 'O meu fit') + '</h2>' + closeBtn() + '</div>'
-    + (B.editDay ? '' : B.editFit ? '<p class="note">Muda o nome, as peças ou as opções. Os dias em que já o usaste ficam como estavam.</p>' : B.baseTitle ? '<p class="note">A partir de «' + esc(B.baseTitle) + '». Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
+    + (B.editDay ? '' : B.editFit ? '<p class="note">Muda as peças ou as opções. Os dias em que já o usaste ficam como estavam.</p>' : B.baseTitle ? '<p class="note">A partir de um fit teu. Troca o que quiseres: fica guardado como um fit novo e o original não muda.</p>'
       : activeFits().length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
-        + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir de ' + esc(f.title) + '">' + dressedHtml(uids(f), 76, f.closed, f.opened) + '<span>' + esc(f.title) + '</span></button>').join('') + '</div></div>' : '')
+        + activeFits().map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
     + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
     + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
@@ -1801,7 +1832,6 @@ function builderHtml() {
     + g.ps.map((p) => { const on = B.sel.includes(p.id); return '<button class="pick" data-bpick="' + esc(p.id) + '" aria-pressed="' + on + '"><span class="pic"><img src="' + pieceSrc(p) + '" alt=""></span><span>' + esc(p.name) + '</span></button>'; }).join('')
     + '</div></div>').join('');
   h += '<button class="btn" data-b-newpiece style="border-style:dashed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nova peça (ex.: ainda sem foto)</button>';
-  h += '<label class="field" for="bname">Nome (opcional)<input id="bname" type="text" value="' + esc(B.title) + '" placeholder="Ex.: Jantar de sexta" style="min-height:44px"></label>';
   h += '<p class="status" role="status">' + (st.ok ? 'Fit completo: ' + B.sel.length + ' peças.' : 'Falta: ' + [!st.top && 'parte de cima', !st.bottom && 'calças ou calções', !st.shoe && 'calçado'].filter(Boolean).join(', ') + '.') + '</p>';
   h += B.editDay || B.editFit
     ? '<div class="btnrow"><button class="btn" data-close>Cancelar</button><button class="btn primary" data-bsave="' + (B.editFit ? 'fit' : 'edit') + '"' + (st.ok ? '' : ' disabled') + '>' + I('check') + 'Guardar</button></div>'
@@ -1853,7 +1883,7 @@ async function saveBuilder(mode) {
         await db.doc('fits/' + other.id).update(patch);
         for (const d of S.days.filter((x) => x.fit === f.id)) await db.doc('days/' + d.id).update({ fit: other.id });
         await db.doc('fits/' + f.id).delete();
-        toast('Já tinhas «' + (other.title || 'Fit') + '» com estas peças: ficaram um só.');
+        toast('Já tinhas um fit com estas peças: ficaram um só.');
       } else {
         await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, kind, editedAt: new Date().toISOString() });
         toast('Fit atualizado.');
@@ -1897,7 +1927,7 @@ async function saveBuilder(mode) {
     const dates = [...new Set(past.map((d) => d.date).concat(mode === 'hoje' ? [t] : []))].sort();
     if (mode === 'hoje') await wearToday({ title, pieces, reason: '', closed, opened, under, socks, fit: fitId }, kind);
     if (dates.length) await db.doc('fits/' + fitId).update({ lastUsed: dates[dates.length - 1], timesUsed: dates.length });
-    S.builder = null; toast(old ? 'Já tinhas um fit com estas peças: «' + (old.title || 'Fit') + '». Fica tudo nesse.' : past.length ? 'Juntei-o ' + (past.length === 1 ? 'ao dia em que já o usaste' : 'aos ' + past.length + ' dias em que já o usaste') + '.' : '');
+    S.builder = null; toast(old ? 'Já tinhas um fit com estas peças. Fica tudo nesse.' : past.length ? 'Juntei-o ' + (past.length === 1 ? 'ao dia em que já o usaste' : 'aos ' + past.length + ' dias em que já o usaste') + '.' : '');
     renderSheet(); render();
   } catch (e) {}
 }
@@ -3374,10 +3404,15 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-push-on')) { enablePush(); return; }
   if (t.dataset.pbelong) {
     const p = pieceById(S.open); if (!p || p.virtual || !db) return;
-    const tags = belongTags(p, t.dataset.pbelong);
+    const k = t.dataset.pbelong, cur = belongsOf(p), set = cur.includes(k) ? cur.filter((x) => x !== k) : cur.concat(k);
+    if (!set.length) { toast('Tem de pertencer a pelo menos um.'); return; }
+    const tags = belongTags(p, set);
     p.tags = tags; renderSheet(); render(); db.doc('pieces/' + p.id).update({ tags }).catch(() => {});
     return;
   }
+  if (t.dataset.fitpiece) { const id = t.dataset.fitpiece, cur = S.fitPieces || []; S.fitPieces = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id); S.histN = 14; render(); return; }
+  if (t.hasAttribute('data-fitpiece-clear')) { S.fitPieces = []; render(); return; }
+  if (t.dataset.fitsOf) { S.fitPieces = [t.dataset.fitsOf]; S.open = null; S.confirmDel = false; renderSheet(); S.tab = 'fits'; pref('tab', 'fits'); render(); const m = document.getElementById('main'); if (m) m.scrollTop = 0; return; }
   if (t.dataset.fitfilter) { S.fitFilter = t.dataset.fitfilter; render(); return; }
   if (t.dataset.fitsview) { S.fitsView = t.dataset.fitsview; render(); document.getElementById('main').scrollTop = 0; return; }
   if (t.dataset.histkind) { S.histKind = t.dataset.histkind; S.histN = 14; render(); return; }
