@@ -254,6 +254,11 @@ nav.tabs svg{width:24px;height:24px}
 .usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
 .usel select{color:var(--fg);width:100%;min-width:0}
 .dress .dsock{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.hatsw{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:none;border:0;padding:2px 0;color:var(--fg);text-align:left;font:inherit;cursor:pointer}
+.hatsw span{display:flex;flex-direction:column;gap:2px}.hatsw small{color:var(--muted,#888);font-size:12.5px}
+.hatsw i{flex:none;position:relative;width:46px;height:28px;border-radius:14px;background:var(--line);transition:background .15s}
+.hatsw i::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.hatsw[aria-checked="true"] i{background:var(--fg)}.hatsw[aria-checked="true"] i::after{transform:translateX(18px);background:var(--bg)}
 .withrow{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
 .withrow button{flex:none;width:56px;height:56px;padding:0;border-radius:12px;background:var(--tile);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 .withrow button img{width:80%;height:80%;object-fit:contain}
@@ -1322,9 +1327,11 @@ function propSkips() { try { const s = JSON.parse(pref('skip') || 'null'); retur
 // Índice de estilo, 0–100: quão bem fica o conjunto, só pelo que se vê. Seis variáveis com pontos fixos
 // (cores 35 · nº de cores 15 · contraste 15 · calçado 10 · padrões 10 · coerência 15). O tempo e as minhas
 // estrelas ficam de fora: servem para ordenar as propostas, não para dizer se o fit é bonito.
-function styleParts(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { idx, parts: [{k, label, pts, max, why}], notes }
+function styleParts(F) { // F: { vis: [{p, w}], main, bottom, shoe, head? } → { idx, parts: [{k, label, pts, max, why}], notes }
   const notes = [], parts = [], add = (k, label, pts, max, why) => parts.push({ k, label, pts: Math.max(0, Math.min(max, Math.round(pts))), max, why });
-  const items = F.vis.map((v) => ({ p: v.p, w: v.w, c: colorFam(v.p.color) }));
+  const body = F.vis.map((v) => ({ p: v.p, w: v.w, c: colorFam(v.p.color) }));
+  // o chapéu (boné, chapéu, gorro) conta como uma pequena mancha de cor, padrão e estilo
+  const items = F.head ? body.concat({ p: F.head, w: 0.5, c: colorFam(F.head.color) }) : body;
   const weight = new Map(); items.forEach((x) => weight.set(x.c.fam, (weight.get(x.c.fam) || 0) + x.w));
   const acc = new Map(); items.filter((x) => x.c.kind === 'accent').forEach((x) => { const a = acc.get(x.c.fam) || { h: x.c.h, w: 0 }; a.w = Math.max(a.w, x.w); acc.set(x.c.fam, a); });
   const names = [...acc.keys()];
@@ -1339,7 +1346,7 @@ function styleParts(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { idx, 
     else { pts = 8; why = names.join(' e ') + ' não são vizinhas nem opostas: chocam'; }
   } else { pts = 0; why = 'Três ou mais cores fortes: ' + names.join(', '); }
   if (weight.has('preto') && weight.has('azul-marinho') && weight.get('preto') >= 3 && weight.get('azul-marinho') >= 3) { pts -= 4; why += ' · preto com azul-marinho em peças grandes'; }
-  add('cor', 'Cores', pts, 35, why);
+  add('cor', 'Cores', pts * 30 / 35, 30, why);
   // 2 · número de cores, com uma dominante (60-30-10)
   const fams = [...weight.entries()].sort((x, y) => y[1] - x[1]), total = fams.reduce((t, x) => t + x[1], 0), dom = fams.length && fams[0][1] / total >= 0.45;
   pts = (fams.length <= 3 ? 9 : 9 - 5 * (fams.length - 3)) + (dom ? 6 : 0);
@@ -1364,7 +1371,15 @@ function styleParts(F) { // F: { vis: [{p, w}], main, bottom, shoe } → { idx, 
   else add('pad', 'Padrões', 0, 10, pats.length + ' padrões ao mesmo tempo');
   // 6 · coerência de estilo
   const fs = items.map((x) => ({ p: x.p, f: formality(x.p) })), sport = fs.find((x) => x.f < 0), smart = fs.find((x) => x.f > 0);
-  add('est', 'Coerência de estilo', sport && smart ? 0 : 15, 15, sport && smart ? 'Mistura desportivo («' + sport.p.name + '») com arranjado («' + smart.p.name + '»)' : sport ? 'Tudo descontraído/desportivo' : smart ? 'Tudo casual ou arranjado' : 'Tudo casual');
+  add('est', 'Coerência de estilo', sport && smart ? 0 : 10, 10, sport && smart ? 'Mistura desportivo («' + sport.p.name + '») com arranjado («' + smart.p.name + '»)' : sport ? 'Tudo descontraído/desportivo' : smart ? 'Tudo casual ou arranjado' : 'Tudo casual');
+  // 7 · chapéu: sem chapéu não perde nada; com chapéu, que repita uma cor ou seja neutro
+  if (!F.head) add('acc', 'Chapéu', 10, 10, 'Sem chapéu');
+  else {
+    const c = colorFam(F.head.color), echo = body.some((x) => x.c.fam === c.fam), otherAcc = body.some((x) => x.c.kind === 'accent');
+    const ok = echo || c.kind !== 'accent';
+    add('acc', 'Chapéu', ok ? 10 : !otherAcc ? 8 : 3, 10, echo ? '«' + F.head.name + '» repete uma cor do resto (' + c.fam + ')' : c.kind !== 'accent' ? '«' + F.head.name + '» num tom neutro (' + c.fam + ')' : !otherAcc ? '«' + F.head.name + '» é o único toque de cor (' + c.fam + ')' : '«' + F.head.name + '» (' + c.fam + ') não liga com as outras cores');
+    if (ok && echo) notes.push('Chapéu a condizer');
+  }
   return { idx: parts.reduce((t, x) => t + x.pts, 0), parts, notes };
 }
 // what the proposals rank by: the same index, on the scale the weather and history scores use
@@ -1376,7 +1391,8 @@ function styleOf(ids, closed, opened) {
   const vis = tv.map((v, i) => ({ p: v.p, w: i === 0 ? 3 : v.win ? 0.5 : 2 }));
   const main = tv.length ? (subOf(tv[0].p) === 'outer' && tv.length > 1 ? tv[1].p : tv[0].p) : null;
   if (bottom) vis.push({ p: bottom, w: subOf(bottom) === 'shorts' ? 2 : 3 }); if (shoe) vis.push({ p: shoe, w: 1 });
-  return styleParts({ vis, main, bottom, shoe });
+  const head = ps.find((p) => groupOf(p) === 'acc' && accKind(p) === 'cabeca') || null;
+  return styleParts({ vis, main, bottom, shoe, head });
 }
 function styleHtml(key, st) { // the index as a button; tapping it shows where the points come from
   if (!st) return '';
@@ -1392,11 +1408,16 @@ const minStyle = () => Math.max(0, Math.min(95, Number(pref('minStyle')) || 0));
 // tipo de acessório: boné, chapéu e gorro contam como «cabeça» (só um por fit)
 const accKind = (p) => { const ty = (p.design && p.design.type) || ''; const n = txtOf(p); const k = ty || (/gorro/.test(n) ? 'gorro' : /bon[ée]|chap[ée]u|\bcap\b/.test(n) ? 'bone' : /cachecol/.test(n) ? 'cachecol' : /rel[óo]gio/.test(n) ? 'relogio' : p.name); return ['bone', 'chapeu', 'gorro'].includes(k) ? 'cabeca' : k; };
 // as peças que se podem escolher em «Afinar»: só as do tipo de outfit escolhido (as mesmas que as propostas usam)
+// interruptor «Com chapéu/gorro» ao propor fits: 'sim' | 'nao' (desligado por omissão)
+const hatAns = () => pref('hat') === 'sim' ? 'sim' : 'nao';
+const setHat = (v) => pref('hat', v);
+const isHead = (p) => !!p && groupOf(p) === 'acc' && accKind(p) === 'cabeca';
 const withAllowed = (p) => !!p && !p.removed && bAllowed(p, S.kind);
 function focusPieces() { return (S.withPieces || []).map((id) => S.pieces.find((x) => x.id === id)).filter(withAllowed); }
 function toggleWith(id) { // same slots as a fit: one casaco, one of each top type, one bottom, one calçado, one accessory of each kind
   const p = S.pieces.find((x) => x.id === id); if (!p) return;
   if (S.withPieces.includes(id)) { S.withPieces = S.withPieces.filter((x) => x !== id); return; }
+  if (isHead(p)) setHat('sim');
   const g = groupOf(p), sub = subOf(p);
   S.withPieces = focusPieces().filter((q) => g === 'acc' ? groupOf(q) !== 'acc' || accKind(q) !== accKind(p) : groupOf(q) === 'acc' ? true : g === 'top' || sub === 'outer' ? subOf(q) !== sub : groupOf(q) !== g || subOf(q) === 'outer').map((q) => q.id).concat(id);
 }
@@ -1405,7 +1426,7 @@ function proposals() {
   const wx = wxNow(), skips = propSkips(), focus = focusPieces(), fOf = (test) => focus.find(test) || null;
   const fShoe = fOf((p) => subOf(p) === 'shoe'), fBottom = fOf((p) => groupOf(p) === 'bottom'), fOuter = fOf((p) => subOf(p) === 'outer'), fTops = focus.filter((p) => ['tee', 'shirt', 'sweater'].includes(subOf(p)));
   const minIdx = minStyle(), kind = S.kind, game = kind === 'jogo' ? gameToday() : null;
-  const key = [minIdx, kind, game ? game.time : '', focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.tags || []).join() + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.id + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
+  const key = [hatAns(), minIdx, kind, game ? game.time : '', focus.map((p) => p.id).join(), today(), wx.feel, wx.rain, wx.wind >= 30, skips.join(), S.pieces.map((p) => p.id + (p.color || '') + (p.tags || []).join() + (p.warm || '') + (p.opens || '') + (p.design ? p.design.pattern + p.design.texture : '')).join(), S.days.map((d) => d.id + (d.pieces || []).length).join(), S.fits.map((f) => f.id + f.status + f.rating).join()].join('#');
   if (propCache.key === key) return propCache.res;
   // tipo de outfit: a roupa de treino só entra nos de treino; nos de jogo, a do Porto ocupa a sua vaga sempre que exista
   // casual: só o que é casual · treino: roupa de treino (e casual para o que faltar) · jogo: SÓ o que tem a bola (mais exceções escolhidas à mão)
@@ -1445,7 +1466,13 @@ function proposals() {
   const accIdle = (p) => { const s = sinceLast(p); return s === null ? 1e6 : s; };
   const accType = accKind;
   const headPref = (p) => { const n = txtOf(p), g = ((p.design && p.design.type) || '') === 'gorro' || /gorro/.test(n); return T < 12 ? (g ? 1 : 0) : (g ? 0 : 1); };
-  const fAcc = focus.filter((p) => groupOf(p) === 'acc'), accTypes = new Set(fAcc.map(accType)), fcpAcc = fAcc.map((p) => p.id).concat(kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p)).sort((a, b) => (accType(a) === 'cabeca' && accType(b) === 'cabeca' ? headPref(b) - headPref(a) : 0) || accIdle(b) - accIdle(a)).filter((p) => !accTypes.has(accType(p)) && accTypes.add(accType(p))).map((p) => p.id) : []);
+  const fAcc = focus.filter((p) => groupOf(p) === 'acc'), fHead = fAcc.find((p) => accType(p) === 'cabeca') || null;
+  // chapéus: o escolhido em «Afinar»; senão os do tipo de outfit (gorro só com frio, boné/chapéu sem frio); nos jogos vai sempre um do Porto, nos outros dias pode não ir nenhum
+  const headsAll = S.pieces.filter((p) => !p.removed && groupOf(p) === 'acc' && accType(p) === 'cabeca' && bAllowed(p, kind));
+  const headsWx = headsAll.filter((p) => headPref(p) === 1), headsOk = headsWx.length ? headsWx : headsAll;
+  const hat = fHead ? 'sim' : hatAns();
+  const heads = fHead ? [fHead] : hat === 'sim' ? (headsOk.length ? headsOk : [null]) : [null]; // sem resposta ou «não»: sem chapéu
+  const accTypes = new Set(fAcc.map(accType).concat('cabeca')), fcpAcc = fAcc.filter((p) => p !== fHead).map((p) => p.id).concat(kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p)).sort((a, b) => (accType(a) === 'cabeca' && accType(b) === 'cabeca' ? headPref(b) - headPref(a) : 0) || accIdle(b) - accIdle(a)).filter((p) => !accTypes.has(accType(p)) && accTypes.add(accType(p))).map((p) => p.id) : []);
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1456,13 +1483,11 @@ function proposals() {
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] < ids[j] ? ids[i] + '|' + ids[j] : ids[j] + '|' + ids[i]; pairW.set(k, (pairW.get(k) || 0) + dlt); }
   });
   const idle = new Map(S.pieces.map((p) => { const s = sinceLast(p); return [p.id, s === null ? 40 + Math.min(20, diffDays(addedDay(p), t)) : Math.min(60, s)]; }));
-  const total = bottoms.length * shoes.length * tops.length * outs.length, step = Math.max(1, Math.ceil(total / 25000));
+  const total = bottoms.length * shoes.length * tops.length * outs.length, step = Math.max(1, Math.ceil(total / Math.max(4000, 25000 / heads.length)));
   const cands = []; let n = 0;
   for (const bottom of bottoms) for (const shoe of shoes) for (const tp of tops) for (const outer of outs) {
     if (n++ % step) continue;
-    const ps = [...tp, ...(outer ? [outer] : []), bottom, shoe], ids = ps.map((p) => p.id).concat(fcpAcc), k = fitKey(ids);
-    const known = fitBy.get(k);
-    if (skips.includes(k) || (known && known.status === 'rejeitada')) continue;
+    const ps = [...tp, ...(outer ? [outer] : []), bottom, shoe];
     // --- weather ---
     // warmth is counted on the torso (plus heavy trousers); legs and feet follow their own rules below
     const W = ps.reduce((s, p) => s + (WARM[subOf(p)] || subOf(p) === 'pants' ? warmthOf(p) : 0), 0), isShorts = subOf(bottom) === 'shorts', sw = warmthOf(shoe), flip = sw < 0, front = tp[tp.length - 1];
@@ -1476,11 +1501,16 @@ function proposals() {
     if (subOf(front) === 'sweater' && T > 25) wxs -= 1;
     if (wx.rain) { if (outer) wxs += (outer.design && outer.design.neck === 'capuz') || /capuz|impermeável/.test(txtOf(outer)) ? 0.8 : 0.6; else if (T < 24) wxs -= 0.6; if (colorFam(shoe.color).l > 0.8) wxs -= 0.3; }
     // --- colour / pattern / style, on what is actually seen (coat open, the rest closed) ---
-    const vis = visibleTorso(ids, false, []).map((v, i) => ({ p: v.p, w: i === 0 ? 3 : v.win ? 0.5 : 2 }));
+    const vis = visibleTorso(ps.map((p) => p.id), false, []).map((v, i) => ({ p: v.p, w: i === 0 ? 3 : v.win ? 0.5 : 2 }));
     const main = outer && vis.length > 1 ? vis[1].p : vis[0].p;
     vis.push({ p: bottom, w: isShorts ? 2 : 3 }, { p: shoe, w: 1 });
-    const hm = harmony({ vis, main, bottom, shoe });
+    // o chapéu (ou nenhum) que dá o melhor índice; entre iguais, o mais parado
+    let hm = null, head = null;
+    for (const hd of heads) { const h2 = harmony({ vis, main, bottom, shoe, head: hd }); if (!hm || h2.idx > hm.idx || (h2.idx === hm.idx && hd && head && idle.get(hd.id) > idle.get(head.id))) { hm = h2; head = hd; } }
     if (hm.idx < minIdx) continue; // below my «índice mínimo»
+    const ids = ps.map((p) => p.id).concat(head ? [head.id] : [], fcpAcc), k = fitKey(ids);
+    const known = fitBy.get(k);
+    if (skips.includes(k) || (known && known.status === 'rejeitada')) continue;
     if (kind === 'jogo') hm.score += 0.25 * ps.filter((p) => isPorto(p) || /^azul$|^branco$/.test(colorFam(p.color).fam)).length; // azul e branco
     // --- history ---
     let hist = 0;
@@ -1490,7 +1520,7 @@ function proposals() {
     if (known && known.status === 'gosto') hist += 0.3;
     tp.forEach((p) => { if (recent.has(p.id)) hist -= 0.4; });
     if (lastKeys.has(k)) hist -= 2;
-    const idl = ps.reduce((s, p) => s + idle.get(p.id), 0) / ps.length;
+    const pa = head ? ps.concat(head) : ps, idl = pa.reduce((s, p) => s + idle.get(p.id), 0) / pa.length;
     cands.push({ ids, k, ps, wxs, hm, base: wxs + hm.score + hist, idl, known, W });
   }
   const res = res0;
@@ -1514,7 +1544,7 @@ function proposals() {
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
       if (c.known && typeof c.known.rating === 'number') notes.push('Já lhe deste ' + num(c.known.rating) + ' ★');
-      if (kind === 'jogo') { const n = c.ps.filter(isPorto).length + fcpAcc.filter((id) => isPorto(pieceById(id) || {})).length; notes.unshift(n ? n + (n === 1 ? ' peça do Porto' : ' peças do Porto') : 'Azul e branco'); if (game && hourOf(game) >= 18) notes[1] = 'Para a noite: ≈ ' + Math.round(T) + ' °C'; }
+      if (kind === 'jogo') { const n = c.ids.map(pieceById).filter((p) => p && isPorto(p)).length; notes.unshift(n ? n + (n === 1 ? ' peça do Porto' : ' peças do Porto') : 'Azul e branco'); if (game && hourOf(game) >= 18) notes[1] = 'Para a noite: ≈ ' + Math.round(T) + ' °C'; }
       if (kind === 'treino') notes.unshift('Treino');
       x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null; x.style = c.hm;
     });
@@ -1549,6 +1579,8 @@ function viewPropose() {
     h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
   }
   h += '</section>';
+  const hat = hatAns(), nHeads = S.pieces.filter((p) => !p.removed && isHead(p) && bAllowed(p, S.kind)).length;
+  if (nHeads) h += '<section class="card tight"><button class="hatsw" role="switch" data-hat="' + (hat === 'sim' ? 'nao' : 'sim') + '" aria-checked="' + (hat === 'sim') + '"><span><b>Com chapéu/gorro</b><small>' + (hat === 'sim' ? 'Junto o boné ou gorro que fica melhor' : 'Os fits vão sem nada na cabeça') + '</small></span><i aria-hidden="true"></i></button></section>';
   let list = R.empty === 'jogo' ? '<div class="empty">' + I('ball', 26) + 'Para propor um fit de jogo falta-te roupa do Porto: ' + esc(R.missing.join(', ')) + '.<br>Abre as peças que levas ao jogo e, em «Pertence a», toca na bola. Também podes criar o fit à mão com ＋.</div>'
     : R.empty === 'treino' ? '<div class="empty">' + I('dumbbell', 26) + 'Ainda não tens roupa de treino.<br>Abre as peças que usas para treinar e, em «Pertence a», toca no halteres.</div>'
     : R.list.length ? R.list.map(propCard).join('')
@@ -3390,6 +3422,7 @@ document.addEventListener('click', (ev) => {
     if (t.dataset.withGo) { S.open = null; S.confirmDel = false; renderSheet(); openPropose(false); } else render();
     return;
   }
+  if (t.dataset.hat) { setHat(t.dataset.hat); if (t.dataset.hat === 'nao') S.withPieces = S.withPieces.filter((id) => !isHead(pieceById(id))); propCache.key = ''; render(); return; }
   if (t.hasAttribute('data-with-clear')) { S.withPieces = []; S.pickPiece = false; render(); return; }
   if (t.hasAttribute('data-with-pick')) { if (focusPieces().length) { S.withPieces = []; S.pickPiece = false; } else S.pickPiece = !S.pickPiece; render(); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; S.open = null; S.propOpen = false; S.adding = false; pref('tab', S.tab); render(); document.getElementById('main').scrollTop = 0; return; }
