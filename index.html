@@ -1389,12 +1389,16 @@ function styleHtml(key, st) { // the index as a button; tapping it shows where t
 let propCache = { key: '', res: null };
 const minStyle = () => Math.max(0, Math.min(95, Number(pref('minStyle')) || 0));
 // the pieces I asked proposals for («fits com estas peças»): the app fills in the rest
-function focusPieces() { return (S.withPieces || []).map((id) => S.pieces.find((x) => x.id === id)).filter((p) => p && !p.removed && groupOf(p) !== 'acc'); }
-function toggleWith(id) { // same slots as a fit: one casaco, one of each top type, one bottom, one calçado
+// tipo de acessório: boné, chapéu e gorro contam como «cabeça» (só um por fit)
+const accKind = (p) => { const ty = (p.design && p.design.type) || ''; const n = txtOf(p); const k = ty || (/gorro/.test(n) ? 'gorro' : /bon[ée]|chap[ée]u|\bcap\b/.test(n) ? 'bone' : /cachecol/.test(n) ? 'cachecol' : /rel[óo]gio/.test(n) ? 'relogio' : p.name); return ['bone', 'chapeu', 'gorro'].includes(k) ? 'cabeca' : k; };
+// as peças que se podem escolher em «Afinar»: só as do tipo de outfit escolhido (as mesmas que as propostas usam)
+const withAllowed = (p) => !!p && !p.removed && bAllowed(p, S.kind);
+function focusPieces() { return (S.withPieces || []).map((id) => S.pieces.find((x) => x.id === id)).filter(withAllowed); }
+function toggleWith(id) { // same slots as a fit: one casaco, one of each top type, one bottom, one calçado, one accessory of each kind
   const p = S.pieces.find((x) => x.id === id); if (!p) return;
   if (S.withPieces.includes(id)) { S.withPieces = S.withPieces.filter((x) => x !== id); return; }
   const g = groupOf(p), sub = subOf(p);
-  S.withPieces = focusPieces().filter((q) => g === 'top' || sub === 'outer' ? subOf(q) !== sub : groupOf(q) !== g || subOf(q) === 'outer').map((q) => q.id).concat(id);
+  S.withPieces = focusPieces().filter((q) => g === 'acc' ? groupOf(q) !== 'acc' || accKind(q) !== accKind(p) : groupOf(q) === 'acc' ? true : g === 'top' || sub === 'outer' ? subOf(q) !== sub : groupOf(q) !== g || subOf(q) === 'outer').map((q) => q.id).concat(id);
 }
 const focusLabel = (fs) => fs.length > 2 ? fs.length + ' peças escolhidas' : fs.map((p) => '«' + p.name + '»').join(' e ');
 function proposals() {
@@ -1439,9 +1443,9 @@ function proposals() {
   // acessórios do Porto (cachecol, gorro…) vão sempre a um jogo, um de cada tipo
   // um de cada tipo; boné, chapéu e gorro contam como «cabeça» (só um): gorro com frio, boné/chapéu no resto; entre iguais, o mais parado
   const accIdle = (p) => { const s = sinceLast(p); return s === null ? 1e6 : s; };
-  const accType = (p) => { const ty = (p.design && p.design.type) || ''; const n = txtOf(p); const k = ty || (/gorro/.test(n) ? 'gorro' : /bon[ée]|chap[ée]u|\bcap\b/.test(n) ? 'bone' : /cachecol/.test(n) ? 'cachecol' : p.name); return ['bone', 'chapeu', 'gorro'].includes(k) ? 'cabeca' : k; };
+  const accType = accKind;
   const headPref = (p) => { const n = txtOf(p), g = ((p.design && p.design.type) || '') === 'gorro' || /gorro/.test(n); return T < 12 ? (g ? 1 : 0) : (g ? 0 : 1); };
-  const accTypes = new Set(), fcpAcc = kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p)).sort((a, b) => (accType(a) === 'cabeca' && accType(b) === 'cabeca' ? headPref(b) - headPref(a) : 0) || accIdle(b) - accIdle(a)).filter((p) => !accTypes.has(accType(p)) && accTypes.add(accType(p))).map((p) => p.id) : [];
+  const fAcc = focus.filter((p) => groupOf(p) === 'acc'), accTypes = new Set(fAcc.map(accType)), fcpAcc = fAcc.map((p) => p.id).concat(kind === 'jogo' ? S.pieces.filter((p) => groupOf(p) === 'acc' && isPorto(p)).sort((a, b) => (accType(a) === 'cabeca' && accType(b) === 'cabeca' ? headPref(b) - headPref(a) : 0) || accIdle(b) - accIdle(a)).filter((p) => !accTypes.has(accType(p)) && accTypes.add(accType(p))).map((p) => p.id) : []);
   // what history says
   const t = today(), recent = new Set(), lastKeys = new Set(), pairW = new Map(), fitBy = new Map();
   worn().forEach((d) => { const n = diffDays(d.date, t); if (n >= 1 && n <= 2) (d.pieces || []).forEach((id) => recent.add(id)); if (n >= 1 && n <= 4) lastKeys.add(fitKey(d.pieces || [])); });
@@ -1510,7 +1514,7 @@ function proposals() {
       const old = c.ps.slice().sort((a, b) => idle.get(b.id) - idle.get(a.id))[0], s = sinceLast(old);
       if (s === null) notes.push('«' + old.name + '» ainda por estrear'); else if (s >= 14) notes.push('«' + old.name + '» parada há ' + s + ' dias');
       if (c.known && typeof c.known.rating === 'number') notes.push('Já lhe deste ' + num(c.known.rating) + ' ★');
-      if (kind === 'jogo') { const n = c.ps.filter(isPorto).length + fcpAcc.length; notes.unshift(n ? n + (n === 1 ? ' peça do Porto' : ' peças do Porto') : 'Azul e branco'); if (game && hourOf(game) >= 18) notes[1] = 'Para a noite: ≈ ' + Math.round(T) + ' °C'; }
+      if (kind === 'jogo') { const n = c.ps.filter(isPorto).length + fcpAcc.filter((id) => isPorto(pieceById(id) || {})).length; notes.unshift(n ? n + (n === 1 ? ' peça do Porto' : ' peças do Porto') : 'Azul e branco'); if (game && hourOf(game) >= 18) notes[1] = 'Para a noite: ≈ ' + Math.round(T) + ' °C'; }
       if (kind === 'treino') notes.unshift('Treino');
       x.notes = notes; x.ids = c.ids; x.key = c.k; x.known = c.known || null; x.style = c.hm;
     });
@@ -1531,7 +1535,7 @@ function propCard(x, i) {
 function viewPropose() {
   wxAuto();
   const R = proposals(), focus = focusPieces(), fo = focus.length, mi = minStyle();
-  const pick = S.pieces.filter((p) => !p.removed && groupOf(p) !== 'acc').sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
+  const pick = S.pieces.filter(withAllowed).sort((a, b) => SUB_ORDER.indexOf(subOf(a)) - SUB_ORDER.indexOf(subOf(b)));
   let h = '<button class="backbtn" data-prop-close>' + I('back') + 'Hoje</button>'
     + '<div class="head"><p class="eyebrow">' + (S.adding ? 'Mais um outfit para hoje' : esc(fmtDay(today()))) + '</p><h1 id="top-h">' + (fo ? 'Fits com ' + esc(focusLabel(focus)) : 'Propostas') + '</h1></div>'
     + kindSeg('kind-pick', 'p', S.kind, 'Propor fits para') + wxHtml();
@@ -1539,7 +1543,7 @@ function viewPropose() {
   h += '<section class="card tight" style="gap:10px"><button class="disc" data-filt-toggle aria-expanded="' + fOpen + '">' + I('sliders') + 'Afinar' + ((fo || mi) ? '<span class="eyebrow" style="margin-left:4px">' + [fo && (fo === 1 ? '1 peça' : fo + ' peças'), mi && 'índice ≥ ' + mi].filter(Boolean).join(' · ') + '</span>' : '') + I('chev') + '</button>';
   if (fOpen) {
     h = h.replace(/<section class="card tight" style="gap:10px">(?![\s\S]*<section class="card tight")/, '<section class="card tight" style="gap:10px;padding-bottom:14px">');
-    if (pick.length) h += '<p class="status" style="font-size:13px">' + (fo ? 'Toca noutra peça para a juntar, ou numa escolhida para a tirar.' : 'Escolhe peças que queres usar (ex.: calças + calçado); a app propõe o resto.') + '</p>'
+    if (pick.length) h += '<p class="status" style="font-size:13px">' + (fo ? 'Toca noutra peça para a juntar, ou numa escolhida para a tirar.' : 'Escolhe peças que queres usar (ex.: calças + calçado, ou um boné); a app propõe o resto.') + '</p>'
       + '<div class="withrow" role="group" aria-label="Escolhe as peças que queres usar">' + pick.map((p) => '<button data-with="' + esc(p.id) + '" aria-pressed="' + focus.includes(p) + '" title="' + esc(p.name) + '" aria-label="Fits com ' + esc(p.name) + '"><img src="' + pieceSrc(p) + '" alt=""></button>').join('') + '</div>'
       + (fo ? '<button class="chip" data-with-clear style="align-self:flex-start">' + I('x', 14) + 'Tirar as peças escolhidas</button>' : '');
     h += '<label class="minsty" for="minsty"><span>Índice de estilo mínimo</span><b id="minsty-v">' + (mi ? mi : 'qualquer') + '</b><input id="minsty" type="range" min="0" max="95" step="5" value="' + mi + '" data-minstyle aria-label="Índice de estilo mínimo das propostas"></label>';
@@ -1820,7 +1824,7 @@ function pieceSheet(p) {
     + '<div><small>Últimos 6 meses</small><strong>' + inPeriod(182) + '×</strong></div>'
     + '<div><small>Últimos 12 meses</small><strong>' + inPeriod(365) + '×</strong></div>'
     + '</div>'
-    + (groupOf(p) !== 'acc' && !p.removed ? '<button class="btn primary" data-with="' + esc(p.id) + '" data-with-go="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/></svg>Propor fits com esta peça</button>' : '')
+    + (!p.removed ? '<button class="btn primary" data-with="' + esc(p.id) + '" data-with-go="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/></svg>Propor fits com esta peça</button>' : '')
     + (S.fits.some((f) => (f.pieces || []).includes(p.id)) || S.days.some((d) => d.worn && (d.pieces || []).includes(p.id)) ? '<button class="btn" data-fits-of="' + esc(p.id) + '">' + I('search') + 'Ver fits com esta peça</button>' : '')
     + pieceSetHtml(p)
     + (topPartners.length ? '<h3>Usada mais vezes com</h3><div class="pairs">' + topPartners.map(([id, n]) => { const q = pieceById(id); return '<button class="pair" data-open="' + esc(id) + '" style="border:none;background:none;padding:0;text-align:left"><span class="mini"><span><img src="' + pieceSrc(q) + '" alt=""></span></span><span>' + esc(q.name) + '</span><b>' + n + '×</b></button>'; }).join('') + '</div>' : '')
@@ -3381,7 +3385,7 @@ document.addEventListener('click', (ev) => {
   if (t.hasAttribute('data-data-open')) { openDataSheet(); return; }
   if (t.dataset.style) { S.styleOpen = S.styleOpen === t.dataset.style ? null : t.dataset.style; if (t.dataset.style === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); } else render(); return; }
   if (t.dataset.with) {
-    if (t.dataset.withGo) S.withPieces = [t.dataset.with]; else toggleWith(t.dataset.with);
+    if (t.dataset.withGo) { const wp = pieceById(t.dataset.with); if (wp && !bAllowed(wp, S.kind)) S.kind = ['normal', 'jogo', 'treino'].find((k) => bAllowed(wp, k)) || S.kind; S.withPieces = [t.dataset.with]; } else toggleWith(t.dataset.with);
     S.pickPiece = !S.withPieces.length;
     if (t.dataset.withGo) { S.open = null; S.confirmDel = false; renderSheet(); openPropose(false); } else render();
     return;
