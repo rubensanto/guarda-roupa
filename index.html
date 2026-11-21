@@ -178,6 +178,7 @@ nav.tabs svg{width:24px;height:24px}
 .dress .dw{position:absolute;pointer-events:none}
 .dress .dw img{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
 .ltog{display:flex;flex-wrap:wrap;gap:6px}
+.loff{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 8px}.loff-l{font-size:13px;color:var(--muted,#888);margin-right:2px}.chip-sm{min-height:30px;padding:0 11px;font-size:13px}
 .wx{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);font-size:14px}
 .wx p{margin:0}
 .rank{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--fg);color:var(--bg);font-size:13px;font-weight:700;vertical-align:2px}
@@ -862,7 +863,18 @@ function underPiece(u) {
 const SOCKS = { brancas: ['Brancas', '#F4F3EE', '#A9A8A0'], pretas: ['Pretas', '#232325', '#0C0C0D'], cinzentas: ['Cinzentas', '#9C9EA3', '#63656A'] };
 const sockPiece = (k) => SOCKS[k] ? (underCache['s' + k] || (underCache['s' + k] = { id: '~s:' + k, virtual: true, sock: k, name: 'Meias ' + SOCKS[k][0].toLowerCase(), cat: 'socks', color: SOCKS[k][1], tags: [] })) : undefined;
 // ids to draw for a fit / day: its pieces plus, when chosen, the camisola interior and the meias
-const uids = (o, pieces) => { const ids = pieces || (o && o.pieces) || []; return (o && UNDER[o.under] ? ['~u:' + o.under] : []).concat(ids, o && SOCKS[o.socks] ? ['~s:' + o.socks] : []); };
+// «Tirar» uma camada (casaco, camisola, camisa, t-shirt) só muda o que se vê: o fit continua o mesmo (mesmas peças).
+const TORSO_SUBS = ['tee', 'shirt', 'sweater', 'outer'], OFF_LBL = { outer: 'Casaco', sweater: 'Camisola', shirt: 'Camisa', tee: 'T-shirt' };
+const torsoReal = (ids) => TORSO_SUBS.map((s) => (ids || []).map(pieceById).find((p) => p && !p.virtual && subOf(p) === s)).filter(Boolean);
+const offOf = (o, ids) => { const off = ((o && o.off) || []).filter((x) => TORSO_SUBS.includes(x)); if (!off.length) return []; const ps = torsoReal(ids); const on = off.filter((s) => ps.some((p) => subOf(p) === s)); return ps.some((p) => !on.includes(subOf(p))) ? on : []; };
+function layerOffRow(scope, id, o, pieces) {
+  const ids = pieces || (o && o.pieces) || [], ps = torsoReal(ids);
+  if (ps.length < 2) return '';
+  const off = offOf(o, ids);
+  return '<div class="loff" role="group" aria-label="Camadas vestidas (tirar uma não muda o fit)"><span class="loff-l">Vestido</span>' + ps.slice().reverse().map((p) => { const s = subOf(p), on = !off.includes(s);
+    return '<button class="chip chip-sm" data-loff="' + scope + '" data-loff-id="' + esc(id) + '" data-loff-layer="' + s + '" aria-pressed="' + on + '" title="' + esc(p.name) + '">' + OFF_LBL[s] + '</button>'; }).join('') + '</div>';
+}
+const uids = (o, pieces) => { let ids = pieces || (o && o.pieces) || []; const off = offOf(o, ids); if (off.length) ids = ids.filter((x) => { const p = pieceById(x); return !p || !off.includes(subOf(p)); }); return (o && UNDER[o.under] ? ['~u:' + o.under] : []).concat(ids, o && SOCKS[o.socks] ? ['~s:' + o.socks] : []); };
 const OPTS = { under: ['Camisola interior', UNDER], socks: ['Meias', SOCKS] };
 function optSel(scope, id, o) { // the two «not a piece» options of a fit, side by side
   return '<div class="usels">' + Object.keys(OPTS).map((f) => { const L = OPTS[f][0], T = OPTS[f][1], cur = o && o[f];
@@ -998,7 +1010,7 @@ function outfitCard(plan, i, n) {
   h += '<div class="fitview" style="justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened) + miniCol(ps) + '</div>'
     + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened))
     + '<button class="disc" data-opt-toggle="' + esc(id) + '" aria-expanded="' + opts + '">' + I('layers') + 'Camadas e meias' + I('chev') + '</button>'
-    + (opts ? layerToggles('day', id, uids(plan), plan.closed, plan.opened) + optSel('day', id, plan) : '')
+    + (opts ? layerOffRow('day', id, plan) + layerToggles('day', id, uids(plan), plan.closed, plan.opened) + optSel('day', id, plan) : '')
     + (f ? rateHtml(f) : '');
   return h + '</section>';
 }
@@ -1626,7 +1638,7 @@ function fitCard(f, compact) {
   const nUsed = fitDays(f).length;
   let h = '<article class="card" aria-label="Fit"><div class="sec"><h2>' + I(KIND_IC[k], 18) + '<span style="min-width:0">' + (rateTxt(f) || 'Por avaliar') + '</span>' + (nUsed ? '<span class="eyebrow" style="font-weight:500">· usado ' + nUsed + '×</span>' : '') + '</h2>'
     + (f.source === 'eu' ? '<span class="badge" title="Criado por mim">' + I('edit', 13) + '</span>' : '') + '</div>';
-  h += layerToggles('fit', f.id, uids(f), f.closed, f.opened);
+  h += layerOffRow('fit', f.id, f) + layerToggles('fit', f.id, uids(f), f.closed, f.opened);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened) + miniCol(ps) + '</div>';
   if (!compact) {
     h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened));
@@ -1893,7 +1905,7 @@ function builderHtml() {
       : baseFits.length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
         + baseFits.map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
     + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
-    + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
+    + layerOffRow('b', 'b', B, B.sel) + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
     + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
@@ -1915,13 +1927,13 @@ function builderHtml() {
 function editFitBuilder(id) { // change this fit itself: name, pieces and options
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null;
-  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: f.title || '', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), editFit: f.id };
+  S.builder = { sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: f.title || '', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', off: (f.off || []).slice(), kind: kindOf(f), editFit: f.id };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function baseBuilder(id) { // new fit that starts as a copy of an existing one (the original is left alone)
   const f = S.fits.find((x) => x.id === id); if (!f) return;
   S.open = null; const byKind = S.builder && S.builder.byKind;
-  S.builder = { byKind, sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', kind: kindOf(f), baseTitle: f.title || 'Fit' };
+  S.builder = { byKind, sel: (f.pieces || []).filter((x) => { const p = pieceById(x); return p && !p.removed; }), title: (f.title || 'Fit') + ' (variação)', closed: !!f.closed, opened: (f.opened || []).slice(), under: f.under || '', socks: f.socks || '', off: (f.off || []).slice(), kind: kindOf(f), baseTitle: f.title || 'Fit' };
   renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0;
 }
 function bCreating(B) { return !!B && !B.editDay && !B.editFit; } // only when creating a fit are the pieces limited to its kind
@@ -1960,12 +1972,12 @@ async function saveBuilder(mode) {
   const title = (nameEl && nameEl.value.trim()) || 'O meu fit';
   const pieces = B.sel.slice().sort((a, b) => SUB_ORDER.indexOf(subOf(pieceById(a))) - SUB_ORDER.indexOf(subOf(pieceById(b))));
   try {
-    const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened), kind = KINDS[B.kind] ? B.kind : 'normal';
+    const under = UNDER[B.under] ? B.under : '', socks = SOCKS[B.socks] ? B.socks : '', closed = !!B.closed && hasOuter(pieces), opened = cleanOpened(uids({ under }, pieces), B.opened), kind = KINDS[B.kind] ? B.kind : 'normal', off = offOf(B, pieces);
     if (mode === 'fit') {
       const f = S.fits.find((x) => x.id === B.editFit); if (!f) { S.builder = null; renderSheet(); return; }
       const other = fitOf(pieces, f.id);
       if (other) { // now the same pieces as another fit: they become one (that one), with this one's rating if it had none
-        const patch = { closed, opened, under, socks, kind };
+        const patch = { closed, opened, under, socks, off, kind };
         if (typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
         if (f.status === 'gosto' && other.status !== 'gosto') patch.status = 'gosto';
         const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
@@ -1975,7 +1987,7 @@ async function saveBuilder(mode) {
         await db.doc('fits/' + f.id).delete();
         toast('Já tinhas um fit com estas peças: ficaram um só.');
       } else {
-        await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, kind, editedAt: new Date().toISOString() });
+        await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, off, kind, editedAt: new Date().toISOString() });
         toast('Fit atualizado.');
       }
       S.builder = null; renderSheet(); render(); return;
@@ -1988,16 +2000,16 @@ async function saveBuilder(mode) {
       let fitId = day.fit || null;
       if (other) {
         fitId = other.id;
-        const patch = { closed, opened, under, socks, lastUsed: t, timesUsed: fitDays(other).filter((x) => x.date !== t).length + 1 };
+        const patch = { closed, opened, under, socks, off, lastUsed: t, timesUsed: fitDays(other).filter((x) => x.date !== t).length + 1 };
         if (kind !== 'normal' && kindOf(other) === 'normal') patch.kind = kind;
         if (f && typeof other.rating !== 'number' && typeof f.rating === 'number') patch.rating = f.rating;
         if (other.status !== 'gosto') patch.status = 'gosto';
         await db.doc('fits/' + other.id).update(patch);
         if (f && f.source === 'eu' && !S.days.some((x) => x.id !== day.id && x.fit === f.id)) await db.doc('fits/' + f.id).delete(); // the copy made just for this day
       }
-      else if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, kind });
-      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
-      await db.doc('days/' + day.id).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, kind, slot: day.slot || 1, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
+      else if (f && f.source === 'eu' && (f.timesUsed || 0) <= 1) await db.doc('fits/' + f.id).update({ title, pieces, closed, opened, under, socks, off, kind });
+      else if (!same) { const r = await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, off, lastUsed: t, timesUsed: 1, createdAt: new Date().toISOString() }); fitId = r.id; }
+      await db.doc('days/' + day.id).set({ date: t, title, pieces, reason: same ? (day.reason || '') : '', worn: true, closed, opened, under, socks, off, kind, slot: day.slot || 1, fit: fitId, chosenAt: day.chosenAt || new Date().toISOString(), editedAt: new Date().toISOString() });
       S.builder = null; renderSheet(); return;
     }
     const t = today(), old = fitOf(pieces);
@@ -2006,16 +2018,16 @@ async function saveBuilder(mode) {
     let fitId;
     if (old) {
       fitId = old.id;
-      const patch = { closed, opened, under, socks };
+      const patch = { closed, opened, under, socks, off };
       if (kind !== 'normal') patch.kind = kind;
       if (old.status !== 'gosto') patch.status = 'gosto';
       const auto = (x) => !x || x === 'O meu fit' || / \(variação\)$/.test(x) || /^Proposta de /.test(x);
       if (auto(old.title) && !auto(title)) patch.title = title; // a name I typed replaces an automatic one
       await db.doc('fits/' + old.id).update(patch);
-    } else fitId = (await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, createdAt: new Date().toISOString() })).id;
+    } else fitId = (await db.collection('fits').add({ title, pieces, reason: '', tags: [], status: 'gosto', source: 'eu', kind, closed, opened, under, socks, off, createdAt: new Date().toISOString() })).id;
     for (const d of past) if (d.fit !== fitId) await db.doc('days/' + d.id).update({ fit: fitId });
     const dates = [...new Set(past.map((d) => d.date).concat(mode === 'hoje' ? [t] : []))].sort();
-    if (mode === 'hoje') await wearToday({ title, pieces, reason: '', closed, opened, under, socks, fit: fitId }, kind);
+    if (mode === 'hoje') await wearToday({ title, pieces, reason: '', closed, opened, under, socks, off, fit: fitId }, kind);
     if (dates.length) await db.doc('fits/' + fitId).update({ lastUsed: dates[dates.length - 1], timesUsed: dates.length });
     S.builder = null; toast(old ? 'Já tinhas um fit com estas peças. Fica tudo nesse.' : past.length ? 'Juntei-o ' + (past.length === 1 ? 'ao dia em que já o usaste' : 'aos ' + past.length + ' dias em que já o usaste') + '.' : '');
     renderSheet(); render();
@@ -2092,7 +2104,7 @@ async function useFit(id, kind) {
   const t = today();
   kind = kind || (kindOf(f) !== 'normal' ? kindOf(f) : S.kind);
   try {
-    await wearToday({ title: f.title, pieces: f.pieces || [], reason: f.reason || '', closed: !!f.closed, opened: f.opened || [], under: f.under || '', socks: f.socks || '', fit: f.id }, kind);
+    await wearToday({ title: f.title, pieces: f.pieces || [], reason: f.reason || '', closed: !!f.closed, opened: f.opened || [], under: f.under || '', socks: f.socks || '', off: f.off || [], fit: f.id }, kind);
     if (kind !== 'normal' && kindOf(f) === 'normal' && f.source !== 'eu') await db.doc('fits/' + f.id).update({ kind });
     await db.doc('fits/' + f.id).update({ lastUsed: t, timesUsed: (f.timesUsed || 0) + 1 });
   } catch (e) {}
@@ -3439,7 +3451,7 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.open) { S.builder = null; S.confirmDel = false; S.open = t.dataset.open; renderSheet(); const sc = document.querySelector('.sheet'); if (sc) sc.scrollTop = 0; return; }
   if (t.hasAttribute('data-close')) { S.open = null; S.builder = null; S.confirmDel = false; renderSheet(); return; }
   if (t.hasAttribute('data-build')) { S.open = null; S.builder = { sel: [], title: '', kind: S.kind }; renderSheet(); return; }
-  if (t.dataset.editDay) { const d = dayById(t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', socks: d.socks || '', kind: kindOf(d), editDay: d.id }; renderSheet(); } return; }
+  if (t.dataset.editDay) { const d = dayById(t.dataset.editDay); if (d) { S.open = null; S.builder = { sel: (d.pieces || []).filter((id) => { const p = pieceById(id); return p && !p.removed; }), title: d.title || '', closed: !!d.closed, opened: (d.opened || []).slice(), under: d.under || '', socks: d.socks || '', off: (d.off || []).slice(), kind: kindOf(d), editDay: d.id }; renderSheet(); } return; }
   if (t.hasAttribute('data-new-piece')) { openDesigner(null); return; }
   if (t.dataset.redesign) { const p = pieceById(t.dataset.redesign); if (p) openDesigner(p, (id) => { S.open = p.id; }); return; }
   if (t.hasAttribute('data-b-newpiece')) { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; openDesigner(null, (id) => { if (id && S.builder) { S.builder.pendingPick = id; } }); return; }
@@ -3449,6 +3461,18 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.bsave) { saveBuilder(t.dataset.bsave); return; }
   if (t.dataset.fitEdit) { editFitBuilder(t.dataset.fitEdit); return; }
   if (t.dataset.kind) { S.upKind = t.dataset.kind; S.msg = ''; render(); return; }
+  if (t.dataset.loff) { // tirar / voltar a vestir uma camada: o fit continua o mesmo
+    const scope = t.dataset.loff, id = t.dataset.loffId, layer = t.dataset.loffLayer;
+    const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : dayById(id);
+    if (!tgt) return;
+    const ids = scope === 'b' ? tgt.sel : tgt.pieces || [], cur = offOf(tgt, ids);
+    const next = cur.includes(layer) ? cur.filter((x) => x !== layer) : cur.concat([layer]);
+    if (!torsoReal(ids).some((p) => !next.includes(subOf(p)))) { toast('Tem de ficar pelo menos uma peça de cima vestida.'); return; }
+    const patch = { off: next }; Object.assign(tgt, patch);
+    if (scope === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); return; }
+    render(); if (db) db.doc((scope === 'fit' ? 'fits/' : 'days/') + id).update(patch).catch(() => {});
+    return;
+  }
   if (t.dataset.lt) { // open / close one layer (casaco, camisola, camisa), each on its own
     const scope = t.dataset.lt, id = t.dataset.ltId, layer = t.dataset.ltLayer, on = t.dataset.ltOpen === '1';
     const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : dayById(id);
