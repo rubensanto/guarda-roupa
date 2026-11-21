@@ -1171,13 +1171,14 @@ const masksOf = (ms) => { if (!ms.length) return ''; const u = ms.map(([src, pos
 // ---------- costas ----------
 // Sem `backIcon` ainda não sei como é a parte de trás: mostro a silhueta da peça na sua cor, às riscas, com «?».
 function backLayer(p, cls, st) {
-  if (groupOf(p) === 'shoe') return '<img class="' + cls + '" src="' + pieceSrc(p) + '" alt="" style="' + st + '">'; // o calçado fica igual de costas
+  if (sameBack(p)) return '<img class="' + cls + '" src="' + pieceSrc(p) + '" alt="" style="' + st + '">'; // calçado e relógios ficam iguais de costas
   if (p.backIcon) return '<img class="' + cls + '" src="' + blob(p.backIcon) + '" alt="" style="' + st + '">';
   const c = p.color || '#999999', stripe = lum(c) > 0.6 ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.26)', o = shade(c, lum(c) > 0.6 ? 0.55 : 0.35);
   const hatch = 'repeating-linear-gradient(135deg,transparent 0 7px,' + stripe + ' 7px 10px),' + c;
   return '<span class="' + cls + ' bk" style="' + st + ';filter:drop-shadow(1.5px 0 0 ' + o + ') drop-shadow(-1.5px 0 0 ' + o + ') drop-shadow(0 1.5px 0 ' + o + ') drop-shadow(0 -1.5px 0 ' + o + ')"><span class="bk-in" style="background:' + hatch + maskOf(pieceSrc(p)) + '"></span><i aria-hidden="true">?</i></span>';
 }
-const backKnown = (p) => !!p.backIcon || groupOf(p) === 'shoe';
+const sameBack = (p) => groupOf(p) === 'shoe' || (groupOf(p) === 'acc' && accKind(p) === 'relogio');
+const backKnown = (p) => !!p.backIcon || sameBack(p);
 function bkSeg(key) {
   const on = S.backs.has(key);
   return '<div class="bkrow"><div class="seg seg-sm" role="group" aria-label="Ver de frente ou de costas"><button data-bk="' + esc(key) + '" data-bk-on="0" aria-pressed="' + !on + '">Frente</button><button data-bk="' + esc(key) + '" data-bk-on="1" aria-pressed="' + on + '">Costas</button></div></div>';
