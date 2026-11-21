@@ -178,6 +178,14 @@ nav.tabs svg{width:24px;height:24px}
 .dress .dw{position:absolute;pointer-events:none}
 .dress .dw img{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.18))}
 .ltog{display:flex;flex-wrap:wrap;gap:6px}
+.ftools{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px}
+.ftools .tg{display:flex;gap:4px;padding:3px;border-radius:14px;background:var(--sunk)}
+.tbtn{width:40px;height:38px;border:none;border-radius:11px;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;padding:0}
+.tbtn[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.tg-off .tbtn[aria-pressed="false"]{opacity:.45}
+.tg-off .tbtn[aria-pressed="false"] .i{stroke-dasharray:2.2 2.2}
+.tbtn.solo{background:var(--sunk);border-radius:14px;width:44px;height:44px}
+.tbtn.solo[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
 .loff{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 8px}.loff-l{font-size:13px;color:var(--muted,#888);margin-right:2px}.chip-sm{min-height:30px;padding:0 11px;font-size:13px}
 .wx{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);font-size:14px}
 .wx p{margin:0}
@@ -853,6 +861,14 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   wand: '<path d="M4 20l11-11M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1zM19 11l.6 1.2 1.2.6-1.2.6L19 14.6l-.6-1.2-1.2-.6 1.2-.6z"/>',
   history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/><path d="M12 8v4l3 2"/>',
+  jacket: '<path d="M8.5 4 4 6 2.8 19H6l1-8v9h10v-9l1 8h3.2L20 6l-4.5-2L12 7.5z"/><path d="M12 7.5V20M8.5 4l1.6 5M15.5 4l-1.6 5"/>',
+  jacketOpen: '<path d="M8.5 4 4 6 2.8 19H6l1-8v9h3.5V8.5zM15.5 4 20 6l1.2 13H18l-1-8v9h-3.5V8.5z"/>',
+  sweater: '<path d="M9 4 4 6 2.8 19H6l1-8v9h10v-9l1 8h3.2L20 6l-5-2c-.6 1.5-1.6 2.3-3 2.3S9.6 5.5 9 4z"/><path d="M7 17.5h10"/>',
+  sweaterOpen: '<path d="M9 4 4 6 2.8 19H6l1-8v9h10v-9l1 8h3.2L20 6l-5-2c-.6 1.5-1.6 2.3-3 2.3S9.6 5.5 9 4z"/><path d="M10.2 5.6 12 11l1.8-5.4"/>',
+  shirt2: '<path d="M9 4 4 6.5l1.8 4.2L8 10v10h8V10l2.2.7L20 6.5 15 4l-3 3.2z"/><path d="M12 7.2V20M9 4l1.3 4.4L12 7.2l1.7 1.2L15 4"/>',
+  shirtOpen: '<path d="M9 4 4 6.5l1.8 4.2L8 10v10h2.8V8zM15 4l5 2.5-1.8 4.2L16 10v10h-2.8V8z"/>',
+  tee: '<path d="M9 4l-5 2.5 1.8 4.2L8 10v10h8V10l2.2.7L20 6.5 15 4c-.4 1.7-1.6 2.6-3 2.6S9.4 5.7 9 4z"/>',
+  turn: '<circle cx="12" cy="5" r="2.2"/><path d="M9.3 17v-4.8a2.7 2.7 0 0 1 5.4 0V17"/><path d="M5 12.6C3.1 13.4 2 14.4 2 15.5c0 2.5 4.5 4.5 10 4.5 2 0 3.8-.3 5.4-.7M19 12.6c1.9.8 3 1.8 3 2.9 0 1-.7 1.9-2 2.6"/><path d="M15.2 17.6l2.4 1.7-1.7 2.4"/>',
 };
 const I = (n, s) => '<svg class="i" width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
 const KIND_IC = { normal: 'shirt', treino: 'dumbbell', jogo: 'ball' };
@@ -1013,10 +1029,10 @@ function outfitCard(plan, i, n) {
     + (n > 1 ? '<p class="meta-line" style="margin-top:-8px">Outfit ' + (i + 1) + ' de ' + n + '</p>' : '')
     + kindSeg('day-kind', id, kind);
   if (S.confirmDay === id) h += '<div class="note" style="display:flex;flex-direction:column;gap:10px"><span>Tirar este outfit de hoje? O fit continua guardado.</span><div class="btnrow"><button class="btn" data-del-day-cancel>Cancelar</button><button class="btn" data-del-day-ok="' + esc(id) + '" style="background:var(--new-ink);color:#fff;border-color:var(--new-ink)">' + I('trash') + 'Tirar</button></div></div>';
-  h += '<div class="fitview" style="justify-content:center">' + bkSeg('d:' + id) + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened, S.backs.has('d:' + id)) + miniCol(ps) + '</div>'
+  h += fitTools('day', id, plan, null, 'd:' + id) + '<div class="fitview" style="justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened, S.backs.has('d:' + id)) + miniCol(ps) + '</div>'
     + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened))
-    + '<button class="disc" data-opt-toggle="' + esc(id) + '" aria-expanded="' + opts + '">' + I('layers') + 'Camadas e meias' + I('chev') + '</button>'
-    + (opts ? layerOffRow('day', id, plan) + layerToggles('day', id, uids(plan), plan.closed, plan.opened) + optSel('day', id, plan) : '')
+    + '<button class="disc" data-opt-toggle="' + esc(id) + '" aria-expanded="' + opts + '">' + I('layers') + 'Camisola interior e meias' + I('chev') + '</button>'
+    + (opts ? optSel('day', id, plan) : '')
     + (f ? rateHtml(f) : '');
   return h + '</section>';
 }
@@ -1179,6 +1195,29 @@ function backLayer(p, cls, st) {
 }
 const sameBack = (p) => groupOf(p) === 'shoe' || (groupOf(p) === 'acc' && accKind(p) === 'relogio');
 const backKnown = (p) => !!p.backIcon || sameBack(p);
+// barra de símbolos do manequim: peças vestidas · abrir/fechar · frente/costas
+const LAYER_IC = { outer: ['jacket', 'jacketOpen'], sweater: ['sweater', 'sweaterOpen'], shirt: ['shirt2', 'shirtOpen'], tee: ['tee', 'tee'] };
+const LAYER_NAME = { outer: 'casaco', sweater: 'camisola', shirt: 'camisa', tee: 't-shirt' };
+function bkBtn(key) {
+  const on = S.backs.has(key);
+  return '<button class="tbtn solo" data-bk="' + esc(key) + '" data-bk-on="' + (on ? '0' : '1') + '" aria-pressed="' + on + '" aria-label="' + (on ? 'A ver de costas: tocar para ver de frente' : 'Ver de costas') + '" title="' + (on ? 'Ver de frente' : 'Ver de costas') + '">' + I('turn', 24) + '</button>';
+}
+function fitTools(scope, id, o, pieces, key) {
+  const ids = pieces || (o && o.pieces) || [], back = S.backs.has(key), out = [];
+  const ps = torsoReal(ids);
+  if (ps.length >= 2) {
+    const off = offOf(o, ids);
+    out.push('<div class="tg tg-off" role="group" aria-label="Peças vestidas (tirar uma não muda o fit)">' + ps.slice().reverse().map((p) => { const sub = subOf(p), on = !off.includes(sub);
+      return '<button class="tbtn" data-loff="' + scope + '" data-loff-id="' + esc(id) + '" data-loff-layer="' + sub + '" aria-pressed="' + on + '" aria-label="' + (on ? 'Tirar ' : 'Vestir ') + LAYER_NAME[sub] + ': ' + esc(p.name) + '" title="' + esc(p.name) + (on ? '' : ' (tirada)') + '">' + I(LAYER_IC[sub][0], 22) + '</button>'; }).join('') + '</div>');
+  }
+  if (!back) {
+    const wids = uids(scope === 'b' ? Object.assign({}, o, { pieces: ids }) : o, pieces), st = torsoStack(wids), list = st.filter((p) => canToggle(p, st)).reverse();
+    if (list.length) out.push('<div class="tg" role="group" aria-label="Abrir ou fechar">' + list.map((p) => { const sub = subOf(p), on = layerOpen(p, st, o.closed, o.opened);
+      return '<button class="tbtn" data-lt="' + scope + '" data-lt-id="' + esc(id) + '" data-lt-layer="' + sub + '" data-lt-open="' + (on ? '0' : '1') + '" aria-pressed="' + on + '" aria-label="' + LAYER_NAME[sub][0].toUpperCase() + LAYER_NAME[sub].slice(1) + (on ? ' aberto: tocar para fechar' : ' fechado: tocar para abrir') + '" title="' + (on ? 'Fechar ' : 'Abrir ') + LAYER_NAME[sub] + '">' + I(LAYER_IC[sub][on ? 1 : 0], 22) + '</button>'; }).join('') + '</div>');
+  }
+  out.push(bkBtn(key));
+  return '<div class="ftools">' + out.join('') + '</div>';
+}
 function bkSeg(key) {
   const on = S.backs.has(key);
   return '<div class="bkrow"><div class="seg seg-sm" role="group" aria-label="Ver de frente ou de costas"><button data-bk="' + esc(key) + '" data-bk-on="0" aria-pressed="' + !on + '">Frente</button><button data-bk="' + esc(key) + '" data-bk-on="1" aria-pressed="' + on + '">Costas</button></div></div>';
@@ -1677,7 +1716,7 @@ function fitCard(f, compact) {
   const nUsed = fitDays(f).length;
   let h = '<article class="card" aria-label="Fit"><div class="sec"><h2>' + I(KIND_IC[k], 18) + '<span style="min-width:0">' + (rateTxt(f) || 'Por avaliar') + '</span>' + (nUsed ? '<span class="eyebrow" style="font-weight:500">· usado ' + nUsed + '×</span>' : '') + '</h2>'
     + (f.source === 'eu' ? '<span class="badge" title="Criado por mim">' + I('edit', 13) + '</span>' : '') + '</div>';
-  h += layerOffRow('fit', f.id, f) + layerToggles('fit', f.id, uids(f), f.closed, f.opened) + bkSeg('f:' + f.id);
+  h += fitTools('fit', f.id, f, null, 'f:' + f.id);
   h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened, S.backs.has('f:' + f.id)) + miniCol(ps) + '</div>';
   if (!compact) {
     h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened));
@@ -1897,7 +1936,7 @@ function pieceSheet(p) {
     + (S.backs.has('p:' + p.id)
       ? '<div class="hero" role="img" aria-label="' + (backKnown(p) ? 'Costas: ' + esc(p.name) : 'Ainda não sei como são as costas desta peça') + '">' + backLayer(p, '', 'position:relative') + '</div>' + (backKnown(p) ? '' : '<p class="status" style="font-size:13px;margin:-6px 0 0;text-align:center">Ainda não sei como são as costas desta peça: é só a silhueta, às riscas, até haver uma foto.</p>')
       : '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>')
-    + bkSeg('p:' + p.id)
+    + '<div class="ftools">' + bkBtn('p:' + p.id) + '</div>'
     + '<div style="display:flex;align-items:center;gap:10px"><span class="swatch" style="background:' + esc(p.color || '#999') + '"></span><h2 id="sh-h">' + esc(p.name) + '</h2></div>'
     + '<div class="tags">' + (p.tags || []).filter((x) => !BELONG_RE.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
     + '<h3 style="margin-bottom:-4px">Pertence a</h3><div class="seg kseg" role="group" aria-label="A que roupa pertence" style="flex:none">' + Object.keys(BELONG).map((k) => '<button data-pbelong="' + k + '" aria-pressed="' + inBelong(p, k) + '" title="' + BELONG[k] + '" aria-label="' + BELONG[k] + '">' + I(BELONG_IC[k], 20) + '</button>').join('') + '</div>'
@@ -1947,7 +1986,7 @@ function builderHtml() {
       : baseFits.length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
         + baseFits.map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
     + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
-    + layerOffRow('b', 'b', B, B.sel) + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened) + bkSeg('b')
+    + fitTools('b', 'b', B, B.sel, 'b')
     + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened, S.backs.has('b')) + '</div>'
     + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
