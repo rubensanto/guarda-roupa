@@ -254,6 +254,12 @@ nav.tabs svg{width:24px;height:24px}
 .usels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .usel{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
 .usel select{color:var(--fg);width:100%;min-width:0}
+.bk{display:block;aspect-ratio:1;container-type:inline-size}
+.bk .bk-in{position:absolute;inset:0}
+.bk i{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-style:normal;font-weight:700;font-size:max(9px,16cqw);line-height:1;padding:.18em .42em;border-radius:999px;background:rgba(20,20,20,.72);color:#fff;font-family:inherit}
+.hero .bk{width:270px;max-width:90%;position:relative}
+.bk-tag{position:absolute;left:50%;top:6px;transform:translateX(-50%);z-index:9;white-space:nowrap;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:rgba(20,20,20,.72);color:#fff}
+.bkrow{display:flex;justify-content:center;margin:-2px 0 6px}
 .dress .dsock{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 .hatsw{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:none;border:0;padding:2px 0;color:var(--fg);text-align:left;font:inherit;cursor:pointer}
 .hatsw span{display:flex;flex-direction:column;gap:2px}.hatsw small{color:var(--muted,#888);font-size:12.5px}
@@ -793,7 +799,7 @@ const SORTS = [
 ];
 
 const S = { dataSheet: null, pieces: [], allPieces: [], viewer: null, confirmDel: false, uploads: [], days: [], fits: [], games: [], kind: 'normal', adding: false, confirmDay: null, ready: false, offline: false, tab: 'hoje', filter: 'all', sort: 'cold',
-  period: 90, fitFilter: 'all', withPieces: [], pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
+  period: 90, fitFilter: 'all', withPieces: [], backs: new Set(), pickPiece: false, open: null, builder: null, upKind: 'vestido', busy: false, msg: '', msgErr: false };
 let db = null, assets = null;
 S.elements = [];
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('gr-' + k); localStorage.setItem('gr-' + k, v); } catch (e) { return null; } };
@@ -1007,7 +1013,7 @@ function outfitCard(plan, i, n) {
     + (n > 1 ? '<p class="meta-line" style="margin-top:-8px">Outfit ' + (i + 1) + ' de ' + n + '</p>' : '')
     + kindSeg('day-kind', id, kind);
   if (S.confirmDay === id) h += '<div class="note" style="display:flex;flex-direction:column;gap:10px"><span>Tirar este outfit de hoje? O fit continua guardado.</span><div class="btnrow"><button class="btn" data-del-day-cancel>Cancelar</button><button class="btn" data-del-day-ok="' + esc(id) + '" style="background:var(--new-ink);color:#fff;border-color:var(--new-ink)">' + I('trash') + 'Tirar</button></div></div>';
-  h += '<div class="fitview" style="justify-content:center">' + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened) + miniCol(ps) + '</div>'
+  h += '<div class="fitview" style="justify-content:center">' + bkSeg('d:' + id) + dressedHtml(uids(plan), n > 1 ? 170 : 200, plan.closed, plan.opened, S.backs.has('d:' + id)) + miniCol(ps) + '</div>'
     + styleHtml('d:' + id, styleOf(uids(plan), plan.closed, plan.opened))
     + '<button class="disc" data-opt-toggle="' + esc(id) + '" aria-expanded="' + opts + '">' + I('layers') + 'Camadas e meias' + I('chev') + '</button>'
     + (opts ? layerOffRow('day', id, plan) + layerToggles('day', id, uids(plan), plan.closed, plan.opened) + optSel('day', id, plan) : '')
@@ -1162,7 +1168,38 @@ const WIN = { half: 'polygon(' + V_PTS + ')', band: 'inset(0 30% 0 30%)' };
 const maskOf = (src) => { const u = "url('" + String(src).replace(/'/g, '%27') + "') 0 0/100% 100% no-repeat"; return ';-webkit-mask:' + u + ';mask:' + u; };
 const masksOf = (ms) => { if (!ms.length) return ''; const u = ms.map(([src, pos]) => "url('" + String(src).replace(/'/g, '%27') + "') " + pos + ' no-repeat').join(',');
   return ';-webkit-mask:' + u + ';mask:' + u + (ms.length > 1 ? ';-webkit-mask-composite:' + ms.slice(1).map(() => 'source-in').join(',') + ';mask-composite:intersect' : ''); };
-function dressedHtml(ids, w, closed, opened) {
+// ---------- costas ----------
+// Sem `backIcon` ainda não sei como é a parte de trás: mostro a silhueta da peça na sua cor, às riscas, com «?».
+function backLayer(p, cls, st) {
+  if (p.backIcon) return '<img class="' + cls + '" src="' + blob(p.backIcon) + '" alt="" style="' + st + '">';
+  const c = p.color || '#999999', stripe = lum(c) > 0.6 ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.26)', o = shade(c, lum(c) > 0.6 ? 0.55 : 0.35);
+  const hatch = 'repeating-linear-gradient(135deg,transparent 0 7px,' + stripe + ' 7px 10px),' + c;
+  return '<span class="' + cls + ' bk" style="' + st + ';filter:drop-shadow(1.5px 0 0 ' + o + ') drop-shadow(-1.5px 0 0 ' + o + ') drop-shadow(0 1.5px 0 ' + o + ') drop-shadow(0 -1.5px 0 ' + o + ')"><span class="bk-in" style="background:' + hatch + maskOf(pieceSrc(p)) + '"></span><i aria-hidden="true">?</i></span>';
+}
+const backKnown = (p) => !!p.backIcon;
+function bkSeg(key) {
+  const on = S.backs.has(key);
+  return '<div class="bkrow"><div class="seg seg-sm" role="group" aria-label="Ver de frente ou de costas"><button data-bk="' + esc(key) + '" data-bk-on="0" aria-pressed="' + !on + '">Frente</button><button data-bk="' + esc(key) + '" data-bk-on="1" aria-pressed="' + on + '">Costas</button></div></div>';
+}
+function dressedBackHtml(ids, w) {
+  const ps = (ids || []).map(pieceById).filter(Boolean);
+  const bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
+  const accs = ps.filter((p) => groupOf(p) === 'acc' && !p.virtual);
+  const top = torsoStack(ids).filter((p) => !p.virtual).pop(); // de costas só se vê a camada de fora, fechada
+  const L = [], shown = [bottom, top, shoe].concat(accs.slice(0, 2)).filter(Boolean);
+  if (bottom) L.push(backLayer(bottom, 'dl', 'left:9%;top:43%;width:82%;z-index:1'));
+  if (top) L.push(backLayer(top, 'dl', (subOf(top) === 'outer' ? 'left:0;top:0;width:100%' : 'left:2%;top:1%;width:96%') + ';z-index:5'));
+  if (shoe) {
+    if (shoe.pair) L.push(backLayer(shoe, 'dl', 'left:28%;top:73%;width:44%;z-index:6'));
+    else { L.push(backLayer(shoe, 'dl', 'left:12%;top:74%;width:40%;z-index:6;transform:scaleX(-1)')); L.push(backLayer(shoe, 'dl', 'left:48%;top:74%;width:40%;z-index:6')); }
+  }
+  accs.slice(0, 2).forEach((p, i) => L.push(backLayer(p, 'dl', 'left:' + (i ? 0 : 70) + '%;top:56%;width:30%;z-index:7')));
+  const unknown = shown.filter((p) => !backKnown(p)).length;
+  if (unknown) L.push('<span class="bk-tag">Costas por confirmar</span>');
+  return '<div class="dress" role="img" aria-label="Fit de costas' + (unknown ? ' (ainda não sei como são as costas de ' + unknown + ' peça' + (unknown > 1 ? 's' : '') + ')' : '') + '" style="width:' + (w || 200) + 'px">' + (L.length ? L.join('') : '<span class="dress-empty">Escolhe peças para ver o fit</span>') + '</div>';
+}
+function dressedHtml(ids, w, closed, opened, back) {
+  if (back) return dressedBackHtml(ids, w);
   const ps = (ids || []).map(pieceById).filter(Boolean);
   const bottom = ps.find((p) => groupOf(p) === 'bottom'), shoe = ps.find((p) => groupOf(p) === 'shoe');
   const accs = ps.filter((p) => groupOf(p) === 'acc' && !p.virtual);
@@ -1638,8 +1675,8 @@ function fitCard(f, compact) {
   const nUsed = fitDays(f).length;
   let h = '<article class="card" aria-label="Fit"><div class="sec"><h2>' + I(KIND_IC[k], 18) + '<span style="min-width:0">' + (rateTxt(f) || 'Por avaliar') + '</span>' + (nUsed ? '<span class="eyebrow" style="font-weight:500">· usado ' + nUsed + '×</span>' : '') + '</h2>'
     + (f.source === 'eu' ? '<span class="badge" title="Criado por mim">' + I('edit', 13) + '</span>' : '') + '</div>';
-  h += layerOffRow('fit', f.id, f) + layerToggles('fit', f.id, uids(f), f.closed, f.opened);
-  h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened) + miniCol(ps) + '</div>';
+  h += layerOffRow('fit', f.id, f) + layerToggles('fit', f.id, uids(f), f.closed, f.opened) + bkSeg('f:' + f.id);
+  h += '<div class="fitview">' + dressedHtml(uids(f), compact ? 150 : 180, f.closed, f.opened, S.backs.has('f:' + f.id)) + miniCol(ps) + '</div>';
   if (!compact) {
     h += styleHtml('f:' + f.id, styleOf(uids(f), f.closed, f.opened));
     const tags = (f.tags || []).filter((x) => x !== 'Criado por mim' && x !== 'Proposta do dia');
@@ -1855,7 +1892,10 @@ function pieceSheet(p) {
   const topPartners = [...partners.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
   return '<div class="sheet-wrap"><button class="scrim" data-close aria-label="Fechar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-h">'
     + '<div class="sheet-head"><span class="badge">' + esc(subInfo(subOf(p)).label) + '</span>' + closeBtn() + '</div>'
-    + '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>'
+    + (S.backs.has('p:' + p.id)
+      ? '<div class="hero" role="img" aria-label="' + (backKnown(p) ? 'Costas: ' + esc(p.name) : 'Ainda não sei como são as costas desta peça') + '">' + backLayer(p, '', 'position:relative') + '</div>' + (backKnown(p) ? '' : '<p class="status" style="font-size:13px;margin:-6px 0 0;text-align:center">Ainda não sei como são as costas desta peça: é só a silhueta, às riscas, até haver uma foto.</p>')
+      : '<button class="hero" data-view="' + esc(p.icon) + '" data-view-alt="Ilustração: ' + esc(p.name) + '" aria-label="Ver ilustração em grande" style="border:none;width:100%"><img src="' + pieceSrc(p) + '" alt="Ilustração: ' + esc(p.name) + '"></button>')
+    + bkSeg('p:' + p.id)
     + '<div style="display:flex;align-items:center;gap:10px"><span class="swatch" style="background:' + esc(p.color || '#999') + '"></span><h2 id="sh-h">' + esc(p.name) + '</h2></div>'
     + '<div class="tags">' + (p.tags || []).filter((x) => !BELONG_RE.test(x)).map((x) => '<span>' + esc(x) + '</span>').join('') + '</div>'
     + '<h3 style="margin-bottom:-4px">Pertence a</h3><div class="seg kseg" role="group" aria-label="A que roupa pertence" style="flex:none">' + Object.keys(BELONG).map((k) => '<button data-pbelong="' + k + '" aria-pressed="' + inBelong(p, k) + '" title="' + BELONG[k] + '" aria-label="' + BELONG[k] + '">' + I(BELONG_IC[k], 20) + '</button>').join('') + '</div>'
@@ -1905,8 +1945,8 @@ function builderHtml() {
       : baseFits.length ? '<div class="stack" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3>Começar a partir de um fit</h3><span class="eyebrow" style="font-size:12px">opcional · toca num</span></div><div class="pickrow">'
         + baseFits.map((f) => '<button class="pick pick-fit" data-bbase="' + esc(f.id) + '" aria-label="Começar a partir deste fit">' + dressedHtml(uids(f), 76, f.closed, f.opened) + (rateTxt(f) ? '<span>' + rateTxt(f) + '</span>' : '') + '</button>').join('') + '</div></div>' : '')
     + kindSeg('bkind', 'b', KINDS[B.kind] ? B.kind : 'normal', B.editDay ? 'Tipo deste outfit' : 'Tipo de fit')
-    + layerOffRow('b', 'b', B, B.sel) + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened)
-    + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened) + '</div>'
+    + layerOffRow('b', 'b', B, B.sel) + layerToggles('b', 'b', uids(B, B.sel), B.closed, B.opened) + bkSeg('b')
+    + '<div style="display:flex;justify-content:center;background:var(--sunk);border-radius:18px;padding:12px 0">' + dressedHtml(uids(B, B.sel), 170, B.closed, B.opened, S.backs.has('b')) + '</div>'
     + styleHtml('b', styleOf(uids(B, B.sel), B.closed, B.opened)) + optSel('b', 'b', B) + (B.under ? '<p class="status" style="font-size:13px;margin-top:-6px">Só se vê quando a peça de cima está aberta (meio fecho, camisa ou casaco).</p>' : '')
     + '<div class="req" aria-label="O que falta"><span class="' + (st.top ? 'ok' : '') + '">' + (st.top ? '✓ ' : '') + 'Parte de cima</span><span class="' + (st.bottom ? 'ok' : '') + '">' + (st.bottom ? '✓ ' : '') + 'Calças ou calções</span><span class="' + (st.shoe ? 'ok' : '') + '">' + (st.shoe ? '✓ ' : '') + 'Calçado</span></div>';
   if (creating && bk === 'jogo') { // no jogo só entra o que está marcado «FC Porto»: avisa o que falta marcar
@@ -3461,6 +3501,7 @@ document.addEventListener('click', (ev) => {
   if (t.dataset.bsave) { saveBuilder(t.dataset.bsave); return; }
   if (t.dataset.fitEdit) { editFitBuilder(t.dataset.fitEdit); return; }
   if (t.dataset.kind) { S.upKind = t.dataset.kind; S.msg = ''; render(); return; }
+  if (t.dataset.bk) { const k = t.dataset.bk; if (t.dataset.bkOn === '1') S.backs.add(k); else S.backs.delete(k); if (k === 'b') { const n = document.getElementById('bname'); if (n) S.builder.title = n.value; renderSheet(); } else render(); return; }
   if (t.dataset.loff) { // tirar / voltar a vestir uma camada: o fit continua o mesmo
     const scope = t.dataset.loff, id = t.dataset.loffId, layer = t.dataset.loffLayer;
     const tgt = scope === 'b' ? S.builder : scope === 'fit' ? S.fits.find((x) => x.id === id) : dayById(id);
